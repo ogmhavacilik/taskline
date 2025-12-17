@@ -1,0 +1,1558 @@
+﻿
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbyTaMMkhkhnGKD0h96jgbDwIYbxAa0JRwjpr3P4V805m5NPvDBukC0bKQMPHRNgCfSPxA/exec" />
+  <title>Task Line</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- XLSX Library (Excel İşlemleri İçin) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  
+  <!-- React ve ReactDOM (UMD Builds) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  
+  <!-- Babel (JSX ve TypeScript Derleyicisi) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Tailwind Konfigürasyonu -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            serif: ['Georgia', 'serif'],
+          },
+          colors: {
+            'brand-bg': '#1A4D2E', // Orman Yeşili
+            'brand-light': '#4F7942', // Daha açık yeşil vurgular için
+            'brand-dark': '#111827'
+          },
+          keyframes: {
+            'toast-in': {
+              '0%': { transform: 'translateX(100%)', opacity: '0' },
+              '100%': { transform: 'translateX(0)', opacity: '1' },
+            },
+            'pulse-red': {
+              '0%, 100%': { borderColor: 'rgba(239, 68, 68, 1)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0.7)' },
+              '50%': { borderColor: 'rgba(248, 113, 113, 1)', boxShadow: '0 0 0 6px rgba(239, 68, 68, 0)' },
+            }
+          },
+          animation: {
+            'toast-in': 'toast-in 0.5s ease-out forwards',
+            'pulse-red': 'pulse-red 2s infinite',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Özel Scrollbar Tasarımı */
+    ::-webkit-scrollbar { 
+        width: 8px; 
+        height: 8px; 
+    }
+    ::-webkit-scrollbar-track { 
+        background: #f1f1f1; 
+    }
+    ::-webkit-scrollbar-thumb { 
+        background: #c1c1c1; 
+        border-radius: 4px; 
+    }
+    ::-webkit-scrollbar-thumb:hover { 
+        background: #a8a8a8; 
+    }
+    
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        /* Sayfa taşmasını engelle */
+        overflow-x: hidden; 
+        background-color: #1A4D2E; /* Ensure brand-bg covers everything */
+    }
+    
+    #root {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5"
+  }
+}
+</script>
+</head>
+<body class="bg-brand-bg text-white font-sans antialiased">
+  
+  <div id="root"></div>
+
+  <!-- 
+    UYGULAMA KODU 
+  -->
+  <script type="text/babel" data-presets="react,typescript">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ==========================================
+    // BÖLÜM 1: TİPLER VE SABİTLER (TYPES & CONSTANTS)
+    // ==========================================
+
+    const DemandType = {
+      EGITIM: 'EĞİTİM',
+      HIZMET: 'HİZMET',
+      KALIBRASYON: 'KALİBRASYON',
+      MALZEME: 'MALZEME',
+      MALZEME_YATIRIM: 'MALZEME (YATIRIM)',
+      ONARIM: 'ONARIM',
+      ABONELIK: 'ABONELİK',
+    };
+
+    const RequestingUnit = {
+      AT_802: 'AT-802',
+      BELL_429: 'BELL-429',
+      T_70: 'T-70',
+      B_360: 'B-360',
+      C_650: 'C-650',
+      HANGAR: 'HANGAR',
+      HANGAR_YER_DESTEK: 'HANGAR YER DESTEK',
+      PIYASA_MALZEME: 'PİYASA MALZEME-TÜM BİRİMLER',
+    };
+
+    const DemandStatus = {
+      YENI: 'Yeni',
+      ISLEMDE: 'İşlemde',
+      TAMAMLANDI: 'Tamamlandı',
+    };
+
+    const DemandPriority = {
+      DUSUK: 'Düşük',
+      ORTA: 'Orta',
+      YUKSEK: 'Yüksek',
+    };
+
+    // ==========================================
+    // BÖLÜM 2: İKONLAR (ICONS)
+    // ==========================================
+
+    const Icons = {
+      Plus: ({ className = "w-6 h-6" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+      ),
+      Trash: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.036-2.134H8.716C7.58 2.5 6.67 3.454 6.67 4.634v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+        </svg>
+      ),
+      Edit: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+        </svg>
+      ),
+      X: ({ className = "w-6 h-6" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      ),
+      Flag: ({ className = "w-4 h-4" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5" />
+        </svg>
+      ),
+      Building: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M8.25 21V3m8.25 18V3m-3.75 18V3m-3 18V3m-3.75 18V3" />
+        </svg>
+      ),
+      Search: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+        </svg>
+      ),
+      Calendar: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0h18" />
+        </svg>
+      ),
+      CheckCircle: ({ className = "w-6 h-6" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      ),
+      XCircle: ({ className = "w-6 h-6" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      ),
+      CloudUp: ({ className = "w-6 h-6" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+        </svg>
+      ),
+      Download: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+      ),
+      ExternalLink: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-4.5 0V6.375c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 10.5Z" />
+        </svg>
+      ),
+      Clock: ({ className = "w-5 h-5" }) => (
+         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+         </svg>
+      ),
+    };
+
+    // ==========================================
+    // BÖLÜM 3: YARDIMCI BİLEŞENLER (UI COMPONENTS)
+    // ==========================================
+
+    // --- LoadingCurtain ---
+    const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
+      const [isOpening, setIsOpening] = useState(false);
+      const [isDestroyed, setIsDestroyed] = useState(false);
+      const gifUrl = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3l0Z2I0Zml2bXJhM201dGhyNWh6YmN3a3A1NnA1c3Y3bGdidXd6bSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/xzSGnyFEGYQmTe29yi/giphy.gif";
+
+      useEffect(() => {
+        if (!isLoading) {
+          setIsOpening(true);
+          const animationTimer = setTimeout(() => { onTransitionEnd(); }, 1200);
+          const destroyTimer = setTimeout(() => { setIsDestroyed(true); }, 1800);
+          return () => { clearTimeout(animationTimer); clearTimeout(destroyTimer); };
+        }
+      }, [isLoading, onTransitionEnd]);
+
+      return (
+        <div className={`fixed inset-0 z-[100] ${isDestroyed ? 'hidden' : 'block'}`}>
+          <div className={`absolute top-0 left-0 w-1/2 h-full bg-white transform transition-transform duration-[1200ms] ease-in-out ${isOpening ? '-translate-x-full' : 'translate-x-0'}`} />
+          <div className={`absolute top-0 right-0 w-1/2 h-full bg-white transform transition-transform duration-[1200ms] ease-in-out ${isOpening ? 'translate-x-full' : 'translate-x-0'}`} />
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-500 ${isOpening ? 'opacity-0' : 'opacity-100'}`}>
+            <img src={gifUrl} alt="Yükleniyor..." className="w-[26rem] h-80 object-contain shadow-[0_0_50px_30px_white]" />
+          </div>
+        </div>
+      );
+    };
+
+    // --- Toast Notification ---
+    const Toast = ({ message, type, onClose }) => {
+      useEffect(() => {
+        const timer = setTimeout(() => { onClose(); }, 3000);
+        return () => clearTimeout(timer);
+      }, [onClose]);
+
+      const isSuccess = type === 'success';
+      const bgColor = isSuccess ? 'bg-green-600' : 'bg-red-600';
+      const Icon = isSuccess ? Icons.CheckCircle : Icons.XCircle;
+
+      return (
+        <div className={`fixed bottom-5 right-5 z-[100] flex items-center p-4 rounded-lg text-white shadow-lg ${bgColor} animate-toast-in`}>
+          <Icon className="w-6 h-6 mr-3" />
+          <span className="font-semibold">{message}</span>
+        </div>
+      );
+    };
+
+    // --- Confirmation Modal ---
+    const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[70] flex justify-center items-center p-4" onClick={onClose}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md relative font-serif text-gray-900" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex justify-between items-start">
+                <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icons.X className="w-6 h-6" /></button>
+              </div>
+              <p className="mt-4 text-gray-600">{message}</p>
+              <div className="flex justify-end pt-6 border-t border-gray-200 space-x-3 mt-6">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">İptal</button>
+                <button type="button" onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors">Sil</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- Attachment Preview Modal ---
+    const AttachmentPreviewModal = ({ isOpen, onClose, attachments }) => {
+      const openInNewTab = (attachment) => {
+        try {
+          const base64Data = attachment.fileContent.split(',')[1];
+          if (!base64Data) {
+            alert(`'${attachment.fileName}' dosyası açılamadı. Dosya formatı bozuk olabilir.`);
+            return;
+          }
+          const binaryString = atob(base64Data);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) { bytes[i] = binaryString.charCodeAt(i); }
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const fileURL = URL.createObjectURL(blob);
+          window.open(fileURL, '_blank');
+        } catch (error) { console.error("Error opening PDF:", error); alert(`Dosya açılırken hata oluştu.`); }
+      };
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex justify-center items-center p-4" onClick={onClose}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col font-serif text-gray-900" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Ekli Dokümanlar</h2>
+              <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icons.X className="w-6 h-6" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              {attachments.length > 0 ? (
+                <ul className="space-y-3">
+                  {attachments.map((att, index) => (
+                    <li key={index} className="p-3 bg-gray-50 rounded-md flex items-center justify-between border border-gray-200">
+                      <span className="text-sm text-gray-800 truncate pr-4" title={att.fileName}>{att.fileName}</span>
+                      <button onClick={() => openInNewTab(att)} className="text-sm font-medium text-blue-600 hover:underline flex-shrink-0">Yeni Sekmede Aç</button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-center text-gray-500">Görüntülenecek ek bulunmuyor.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const toLocalISOString = (date) => {
+      const offset = date.getTimezoneOffset() * 60000;
+      return (new Date(date.getTime() - offset)).toISOString().slice(0, 16);
+    };
+
+    // ==========================================
+    // BÖLÜM 4: ANA BİLEŞENLER (MODALS, BOARDS)
+    // ==========================================
+
+    // --- DemandProgressModal (Detaylı Akış Penceresi) ---
+    const DemandProgressModal = ({ isOpen, onClose, demand, onAddProgressItems, onEditDemand, onCompleteDemand, onEditProgressItem, onRequestDeleteProgressItem }) => {
+      const [newProgressText, setNewProgressText] = useState('');
+      const [customDate, setCustomDate] = useState(toLocalISOString(new Date()));
+      const [isReminder, setIsReminder] = useState(false);
+      const [reminderDate, setReminderDate] = useState('');
+      const [isConfirmingCompletion, setIsConfirmingCompletion] = useState(false);
+      const [completionDate, setCompletionDate] = useState('');
+      const [completionNote, setCompletionNote] = useState('');
+      const [isSupportNote, setIsSupportNote] = useState(false);
+      const [selectedSupportPerson, setSelectedSupportPerson] = useState('');
+      const [hasDeliveredDocument, setHasDeliveredDocument] = useState(false);
+      const [documentName, setDocumentName] = useState('');
+      const [isAttachmentPreviewOpen, setIsAttachmentPreviewOpen] = useState(false);
+      const [editingItem, setEditingItem] = useState(null);
+      const [showOgmCloudForm, setShowOgmCloudForm] = useState(false);
+      const [ogmCloudDidUpload, setOgmCloudDidUpload] = useState(false);
+      const [ogmCloudAttachmentType, setOgmCloudAttachmentType] = useState('Talep Yazı');
+      const [ogmCloudOtherAttachmentName, setOgmCloudOtherAttachmentName] = useState('');
+      
+      // Date Picker Logic State
+      const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+
+      const supportPeople = ['Reyhan Hanım', 'Tuğba Hanım', 'Firuze Hanım', 'Serhat Bey'];
+      const attachmentTypes = ['Talep Yazı', 'Teknik Şartname', 'Talep Formları', 'Diğer'];
+
+      useEffect(() => {
+        if (isOpen) {
+            setCustomDate(toLocalISOString(new Date()));
+            setIsReminder(false);
+            setReminderDate('');
+            setIsDatePickerOpen(false);
+        }
+      }, [isOpen]);
+
+      if (!isOpen || !demand) return null;
+
+      const handleStartEdit = (item) => {
+        setEditingItem({ index: item.originalIndex, description: item.description, date: item.date.split('T')[0] });
+      };
+
+      const handleCancelEdit = () => setEditingItem(null);
+
+      const handleSaveEdit = () => {
+          if (!editingItem || !demand) return;
+          const originalItem = demand.progressHistory[editingItem.index];
+          if (!originalItem) return;
+          const originalDate = new Date(originalItem.date);
+          const [year, month, day] = editingItem.date.split('-').map(Number);
+          const newDate = new Date(year, month - 1, day, originalDate.getHours(), originalDate.getMinutes());
+          
+          const updatedItem = { ...originalItem, description: editingItem.description, date: newDate.toISOString() };
+          onEditProgressItem(demand.id, editingItem.index, updatedItem, originalItem); // Pass original for logging
+          setEditingItem(null);
+      };
+
+      const parseProgressText = (text, isSupport, supportPerson, dateOverride) => {
+        const lines = text.trim().split('\n').filter(line => line.trim() !== '');
+        return lines.map(line => ({ 
+            date: new Date(dateOverride).toISOString(), 
+            description: line.trim(), 
+            isSupportNote: isSupport, 
+            supportPerson: isSupport ? supportPerson : undefined,
+            reminderDate: isReminder && reminderDate ? new Date(reminderDate).toISOString() : undefined,
+            reminderRead: false
+        }));
+      };
+
+      const handlePreview = () => {
+        if (newProgressText.trim() || (isSupportNote && hasDeliveredDocument)) {
+          if (isSupportNote && !selectedSupportPerson) return alert('Lütfen destek personelini seçin.');
+          if (isReminder && !reminderDate) return alert('Lütfen hatırlatma tarihini seçin.');
+
+          let textToParse = newProgressText.trim();
+          if (isSupportNote && hasDeliveredDocument) {
+            const documentNote = documentName.trim() ? `${documentName.trim()} isimli evrak teslim edilmiştir.` : 'İlgili evrak teslim edilmiştir.';
+            textToParse = textToParse ? `${textToParse}\n${documentNote}` : documentNote;
+          }
+          if (!textToParse) return alert("Akış notu giriniz.");
+          
+          const parsedItems = parseProgressText(textToParse, isSupportNote, selectedSupportPerson, customDate);
+          if (parsedItems.length > 0) {
+              onAddProgressItems(demand.id, parsedItems);
+              setNewProgressText(''); setIsSupportNote(false); setSelectedSupportPerson(''); 
+              setHasDeliveredDocument(false); setDocumentName(''); setIsReminder(false);
+              setReminderDate(''); setCustomDate(toLocalISOString(new Date())); setIsDatePickerOpen(false);
+          }
+        }
+      };
+
+      const resetOgmCloudForm = () => { setShowOgmCloudForm(false); setOgmCloudDidUpload(false); setOgmCloudAttachmentType(attachmentTypes[0]); setOgmCloudOtherAttachmentName(''); };
+      
+      const handleCloseModal = () => {
+        const now = new Date();
+        const updatedHistory = demand.progressHistory.map(item => {
+            if (item.reminderDate && new Date(item.reminderDate) <= now && !item.reminderRead) {
+                const readDateStr = new Date().toLocaleString('tr-TR');
+                return {
+                    ...item,
+                    reminderRead: true,
+                    description: `${item.description}\n\n(Hatırlatma okundu: ${readDateStr})`
+                };
+            }
+            return item;
+        });
+        
+        const hasChanges = JSON.stringify(updatedHistory) !== JSON.stringify(demand.progressHistory);
+        if (hasChanges) {
+            onEditDemand({ ...demand, progressHistory: updatedHistory });
+        }
+
+        setNewProgressText(''); setIsConfirmingCompletion(false); setCompletionDate(''); setCompletionNote(''); setIsSupportNote(false);
+        setSelectedSupportPerson(''); setHasDeliveredDocument(false); setDocumentName(''); setEditingItem(null); resetOgmCloudForm(); onClose();
+      };
+
+      const handleStartOgmCloudFlow = () => { window.open('https://bulut.ogm.gov.tr/TALEPLER', '_blank', 'noopener,noreferrer'); setShowOgmCloudForm(true); };
+      
+      const handleOgmCloudSave = () => {
+        const now = new Date();
+        const dateStr = `${now.getDate().toString().padStart(2,'0')}.${(now.getMonth()+1).toString().padStart(2,'0')}.${now.getFullYear()} ${now.getHours()}:${now.getMinutes()}`;
+        const newProgressItems = [{ date: now.toISOString(), description: `Talep ek oluşturma tarihi: ${dateStr}`, isSupportNote: false, }];
+        if (ogmCloudDidUpload) {
+            let attachmentDesc = ogmCloudAttachmentType;
+            if (ogmCloudAttachmentType === 'Diğer' && ogmCloudOtherAttachmentName.trim()) attachmentDesc = ogmCloudOtherAttachmentName.trim();
+            newProgressItems.push({ date: now.toISOString(), description: `Talep Eki Yüklendi: ${attachmentDesc}`, isSupportNote: false });
+        }
+        onAddProgressItems(demand.id, newProgressItems);
+        resetOgmCloudForm();
+      };
+
+      const handleStartCompletion = () => { setIsConfirmingCompletion(true); setCompletionDate(new Date().toISOString().split('T')[0]); };
+      const handleConfirmCompletion = () => { if (completionDate) onCompleteDemand(demand.id, completionDate, completionNote); };
+      
+      const handleExportSingleDemand = () => {
+        const headers = ['TARİH', 'AÇIKLAMA', 'NOT TÜRÜ'];
+        const data = timeline.map(item => {
+            const type = item.isSupportNote ? `Destek (${item.supportPerson})` : item.isCompletionNote ? 'Tamamlanma' : 'Akış';
+            return [new Date(item.date).toLocaleString('tr-TR'), item.description, type];
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+        ws['!cols'] = [{wch: 20}, {wch: 80}, {wch: 20}];
+        XLSX.utils.book_append_sheet(wb, ws, "Talep Geçmişi");
+        XLSX.writeFile(wb, `${demand.title.substring(0, 30)}_gecmis.xlsx`);
+      };
+
+      const progressHistoryWithMeta = demand.progressHistory.map((item, index) => ({ ...item, originalIndex: index, isEditable: true }));
+      const timelineItems = [...progressHistoryWithMeta];
+      if (demand.ebysDate !== 'N/A') timelineItems.push({ date: demand.ebysDate, description: 'Talep Oluşturuldu', isSupportNote: false, isEditable: false, originalIndex: -1 });
+      const timeline = timelineItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Date Picker Display String
+      const customDateDisplay = new Date(customDate).toLocaleString('tr-TR', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute:'2-digit' });
+
+      return (
+        <React.Fragment>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] flex justify-center items-center p-4 backdrop-blur-sm" onClick={handleCloseModal}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all text-gray-900" onClick={(e) => e.stopPropagation()}>
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex-1 min-w-0 mr-4">
+                <div className="flex items-center gap-2 mb-1">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${demand.status === DemandStatus.TAMAMLANDI ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {demand.status}
+                    </span>
+                    <span className="text-xs text-gray-400 font-mono">#{demand.ebysNumber}</span>
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 truncate" title={demand.title}>{demand.title}</h2>
+                <div className="text-xs text-gray-500 mt-0.5 truncate">{demand.requestingUnit}</div>
+              </div>
+              
+              <div className="flex items-center gap-2 shrink-0">
+                 <button onClick={handleExportSingleDemand} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-semibold transition-colors border border-green-200">
+                   <Icons.Download className="w-4 h-4" /> Excel
+                 </button>
+                 <button onClick={(e) => { e.stopPropagation(); onEditDemand(demand); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Düzenle">
+                  <Icons.Edit className="w-5 h-5" />
+                </button>
+                <button onClick={handleCloseModal} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Kapat">
+                  <Icons.X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Timeline Content */}
+            <div className="flex-grow overflow-y-auto p-6 bg-white scrollbar-thin scrollbar-thumb-gray-300">
+               {demand.attachments && demand.attachments.length > 0 && (
+                  <div className="mb-6 flex justify-end">
+                      <button onClick={() => setIsAttachmentPreviewOpen(true)} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-full">
+                        <Icons.ExternalLink className="w-3 h-3" /> {demand.attachments.length} Ek Dosya
+                      </button>
+                  </div>
+                )}
+
+              <div className="relative">
+                {/* Dikey Çizgi */}
+                <div className="absolute top-0 bottom-0 left-[19px] w-0.5 bg-gray-200"></div>
+
+                <div className="space-y-6">
+                    {timeline.map((item, index) => {
+                      const isSupport = item.isSupportNote;
+                      const isCompletion = item.isCompletionNote;
+                      const isReminderActive = item.reminderDate && new Date(item.reminderDate) <= new Date() && !item.reminderRead;
+                      
+                      let icon = <div className="w-2.5 h-2.5 bg-blue-500 rounded-full ring-4 ring-white"></div>;
+                      let cardClass = "bg-white border-gray-200";
+                      
+                      if (isCompletion) {
+                          icon = <Icons.CheckCircle className="w-6 h-6 text-green-600 bg-white ring-4 ring-white rounded-full" />;
+                          cardClass = "bg-green-50 border-green-200";
+                      } else if (isSupport) {
+                          icon = <div className="w-3 h-3 bg-orange-500 rounded-full ring-4 ring-white"></div>;
+                          cardClass = "bg-orange-50 border-orange-200";
+                      } else if (isReminderActive) {
+                          icon = <Icons.Flag className="w-5 h-5 text-red-600 bg-white rounded-full ring-4 ring-white animate-bounce" />;
+                          cardClass = "bg-red-50 border-red-300 shadow-md animate-pulse-red";
+                      }
+
+                      return (
+                        <div key={index} className="relative flex gap-6 group">
+                          <div className="flex-shrink-0 mt-1 z-10 w-10 flex justify-center">
+                              {icon}
+                          </div>
+                          <div className={`flex-grow p-4 rounded-xl border text-sm relative ${cardClass} transition-all`}>
+                             {isReminderActive && (
+                                 <div className="absolute -top-2.5 right-4 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide">
+                                     HATIRLATMA
+                                 </div>
+                             )}
+                            
+                            {editingItem && editingItem.index === item.originalIndex ? (
+                              <div className="space-y-3">
+                                <textarea value={editingItem.description} onChange={(e) => setEditingItem(prev => prev ? {...prev, description: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" rows={3}/>
+                                <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
+                                <div className="flex justify-end gap-2">
+                                  <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-800 rounded text-xs">İptal</button>
+                                  <button onClick={handleSaveEdit} className="px-3 py-1 bg-blue-600 text-white rounded text-xs">Kaydet</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                        {new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}
+                                    </span>
+                                    {item.isEditable && (
+                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => handleStartEdit(item)} className="p-1 hover:bg-gray-200 rounded text-gray-500"><Icons.Edit className="w-3.5 h-3.5" /></button>
+                                        <button onClick={() => onRequestDeleteProgressItem(demand.id, item.originalIndex, item.description)} className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                                      </div>
+                                    )}
+                                </div>
+                                {isSupport && <div className="text-xs font-bold text-orange-700 mb-1">Destek Personeli: {item.supportPerson}</div>}
+                                <div className="text-gray-800 whitespace-pre-wrap leading-relaxed">{item.description}</div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+
+            {/* Input & Action Area */}
+            {demand.status !== DemandStatus.TAMAMLANDI && (
+              <div className="p-5 bg-gray-50 border-t border-gray-200">
+                 {isConfirmingCompletion ? (
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-green-200 animate-in fade-in slide-in-from-bottom-2">
+                      <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2"><Icons.CheckCircle className="w-5 h-5"/> Tamamlama Onayı</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input type="date" value={completionDate} onChange={(e) => setCompletionDate(e.target.value)} className="p-2 border rounded text-sm text-gray-900" required />
+                        <input type="text" value={completionNote} onChange={(e) => setCompletionNote(e.target.value)} className="p-2 border rounded text-sm text-gray-900" placeholder="Son not (isteğe bağlı)" />
+                      </div>
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button onClick={() => setIsConfirmingCompletion(false)} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm">Vazgeç</button>
+                        <button onClick={handleConfirmCompletion} disabled={!completionDate} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700">Tamamla</button>
+                      </div>
+                    </div>
+                  ) : showOgmCloudForm ? (
+                     <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
+                          <h3 className="font-bold text-blue-800 mb-3">OGM Bulut Yükleme Doğrulama</h3>
+                          <div className="flex items-center gap-4 mb-4">
+                              <label className="flex items-center gap-2 text-sm text-gray-800 font-medium"><input type="checkbox" checked={ogmCloudDidUpload} onChange={e=>setOgmCloudDidUpload(e.target.checked)} className="rounded text-blue-600"/> Dosya Yüklendi</label>
+                              {ogmCloudDidUpload && <select value={ogmCloudAttachmentType} onChange={e=>setOgmCloudAttachmentType(e.target.value)} className="text-sm border rounded p-1 text-gray-900"><option>Talep Yazı</option><option>Teknik Şartname</option><option>Diğer</option></select>}
+                          </div>
+                          <div className="flex justify-end gap-2">
+                               <button onClick={resetOgmCloudForm} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm">İptal</button>
+                               <button onClick={handleOgmCloudSave} className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Kaydet</button>
+                          </div>
+                     </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                       <div className="flex flex-wrap gap-3 items-center justify-between">
+                          <div className="flex flex-wrap gap-3 items-center">
+                              {/* Improved Date Picker UX */}
+                              <div className="relative">
+                                  {isDatePickerOpen ? (
+                                     <div className="flex items-center gap-2 bg-white border border-blue-300 rounded px-2 py-1 shadow-sm">
+                                         <input type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="text-sm border-none p-0 text-gray-900 focus:ring-0 w-36" />
+                                         <button onClick={() => setIsDatePickerOpen(false)} className="px-2 py-0.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">Uygula</button>
+                                     </div>
+                                  ) : (
+                                     <button onClick={() => setIsDatePickerOpen(true)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
+                                         <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
+                                         <span className="text-xs font-medium text-gray-700 group-hover:text-blue-700">{customDateDisplay}</span>
+                                     </button>
+                                  )}
+                              </div>
+                              
+                              <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer border transition-colors ${isSupportNote ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                                  <input type="checkbox" checked={isSupportNote} onChange={e => setIsSupportNote(e.target.checked)} className="rounded text-orange-600 focus:ring-orange-500"/>
+                                  <span className="text-xs font-bold uppercase">Destek</span>
+                              </label>
+
+                              <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer border transition-colors ${isReminder ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                                  <input type="checkbox" checked={isReminder} onChange={e => setIsReminder(e.target.checked)} className="rounded text-red-600 focus:ring-red-500"/>
+                                  <span className="text-xs font-bold uppercase">Hatırlatma</span>
+                              </label>
+                          </div>
+
+                          <div className="flex gap-2">
+                              <button onClick={handleStartOgmCloudFlow} className="text-xs flex items-center gap-1 text-gray-600 hover:text-blue-600 bg-white px-2 py-1 rounded border hover:border-blue-300"><Icons.ExternalLink className="w-3 h-3"/> OGM Bulut</button>
+                              <button onClick={() => window.open('https://bulut.ogm.gov.tr/TALEPGORME', '_blank', 'noopener,noreferrer')} className="text-xs flex items-center gap-1 text-gray-600 hover:text-blue-600 bg-white px-2 py-1 rounded border hover:border-blue-300"><Icons.ExternalLink className="w-3 h-3"/> Dosyalar</button>
+                          </div>
+                       </div>
+
+                       {/* Conditional Inputs */}
+                       <div className="flex flex-col gap-2">
+                           {isSupportNote && (
+                              <div className="flex flex-wrap gap-2 items-center p-2 bg-orange-50 border border-orange-100 rounded text-sm animate-in fade-in slide-in-from-top-1">
+                                  <select value={selectedSupportPerson} onChange={e => setSelectedSupportPerson(e.target.value)} className="border-gray-300 rounded text-xs py-1 text-gray-900">
+                                      <option value="" disabled>Personel Seçiniz</option>
+                                      {supportPeople.map(p => <option key={p} value={p}>{p}</option>)}
+                                  </select>
+                                  <label className="flex items-center gap-1 ml-2 text-gray-700 font-medium"><input type="checkbox" checked={hasDeliveredDocument} onChange={e => setHasDeliveredDocument(e.target.checked)} className="rounded text-orange-600"/> Evrak Teslim</label>
+                                  {hasDeliveredDocument && <input type="text" placeholder="Evrak Adı" value={documentName} onChange={e => setDocumentName(e.target.value)} className="border-gray-300 rounded text-xs py-1 px-2 text-gray-900 flex-grow" />}
+                              </div>
+                           )}
+                           {isReminder && (
+                              <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-100 rounded text-sm animate-in fade-in slide-in-from-top-1">
+                                   <span className="text-xs font-bold text-red-700 uppercase">Hatırlatma Zamanı:</span>
+                                   <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="border-red-200 rounded text-xs py-1 text-gray-900 focus:ring-red-500" />
+                              </div>
+                           )}
+                       </div>
+
+                       {/* Main Text Area & Buttons */}
+                       <div className="flex gap-2 items-start">
+                           <textarea 
+                              value={newProgressText} 
+                              onChange={(e) => setNewProgressText(e.target.value)} 
+                              rows={2} 
+                              className="flex-grow rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm p-3 text-gray-900" 
+                              placeholder="Akış notu giriniz..." 
+                            />
+                           <div className="flex flex-col gap-2 w-24 shrink-0">
+                               <button onClick={handlePreview} disabled={!newProgressText.trim() && !hasDeliveredDocument} className="w-full h-full bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                   Ekle
+                               </button>
+                               {demand.status === DemandStatus.ISLEMDE && (
+                                  <button onClick={handleStartCompletion} className="w-full py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-200 text-xs font-bold transition-colors">
+                                      TALEP TAMAMLANDI
+                                  </button>
+                               )}
+                           </div>
+                       </div>
+                    </div>
+                  )}
+              </div>
+            )}
+          </div>
+        </div>
+        <AttachmentPreviewModal isOpen={isAttachmentPreviewOpen} onClose={() => setIsAttachmentPreviewOpen(false)} attachments={demand.attachments} />
+        </React.Fragment>
+      );
+    };
+
+    // --- DemandModal (Yeni/Düzenle) ---
+    const DemandModal = ({ isOpen, onClose, onSave, demandToEdit }) => {
+      const [formData, setFormData] = useState({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.YENI, ebysNumber: '', ebysDate: '' });
+      const [showDriveForm, setShowDriveForm] = useState(false);
+      const [driveDidUpload, setDriveDidUpload] = useState(false);
+      const [driveAttachmentType, setDriveAttachmentType] = useState('Talep Yazı');
+      const [driveOtherAttachmentName, setDriveOtherAttachmentName] = useState('');
+      const attachmentTypes = ['Talep Yazı', 'Teknik Şartname', 'Talep Formları', 'Diğer'];
+
+      useEffect(() => {
+        if (demandToEdit) {
+          setFormData({ 
+              title: demandToEdit.title, 
+              description: demandToEdit.description, 
+              type: demandToEdit.type, 
+              requestingUnits: demandToEdit.requestingUnit ? demandToEdit.requestingUnit.split(',') : [], 
+              unitToAdd: '', 
+              priority: demandToEdit.priority, 
+              status: demandToEdit.status, 
+              ebysNumber: String(demandToEdit.ebysNumber) || '', 
+              ebysDate: demandToEdit.ebysDate ? demandToEdit.ebysDate.split('T')[0] : '' 
+          });
+          setShowDriveForm(false); setDriveDidUpload(false); setDriveAttachmentType(attachmentTypes[0]); setDriveOtherAttachmentName('');
+        } else {
+          setFormData({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.YENI, ebysNumber: '', ebysDate: '' });
+          setShowDriveForm(false); setDriveDidUpload(false); setDriveAttachmentType(attachmentTypes[0]); setDriveOtherAttachmentName('');
+        }
+      }, [demandToEdit, isOpen]);
+      
+      const handleAddUnit = () => {
+        if (formData.unitToAdd && !formData.requestingUnits.includes(formData.unitToAdd)) {
+            setFormData(prev => ({...prev, requestingUnits: [...prev.requestingUnits, prev.unitToAdd], unitToAdd: ''}));
+        }
+      };
+      
+      const handleRemoveUnit = (unitToRemove) => {
+        setFormData(prev => ({...prev, requestingUnits: prev.requestingUnits.filter(unit => unit !== unitToRemove)}));
+      };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!formData.title || !formData.ebysNumber || !formData.ebysDate || formData.requestingUnits.length === 0) {
+            if (formData.requestingUnits.length === 0) alert('Lütfen en az bir talep eden birim seçin.');
+            return;
+        }
+        let ogmDriveAttachmentName;
+        if (showDriveForm && driveDidUpload) {
+          ogmDriveAttachmentName = driveAttachmentType === 'Diğer' && driveOtherAttachmentName.trim() ? driveOtherAttachmentName.trim() : driveAttachmentType;
+        }
+        onSave({ ...(demandToEdit && { id: demandToEdit.id }), ...formData, requestingUnit: formData.requestingUnits.join(','), ogmDriveAttachmentName });
+      };
+
+      const handleStartDriveFlow = () => { window.open('https://bulut.ogm.gov.tr/TALEPLER', '_blank', 'noopener,noreferrer'); setShowDriveForm(true); };
+      
+      if (!isOpen) return null;
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 font-serif relative" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between mb-4 border-b pb-2">
+                <h2 className="text-2xl font-semibold text-gray-900">{demandToEdit ? 'Düzenle' : 'Yeni Kayıt'}</h2>
+                <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
+                <input type="text" placeholder="Başlık" value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500" required/>
+                <div className="grid grid-cols-2 gap-4"><input type="text" placeholder="EBYS No" value={formData.ebysNumber} onChange={e=>setFormData({...formData, ebysNumber:e.target.value})} className="border p-2 rounded text-gray-900"/><input type="date" value={formData.ebysDate} onChange={e=>setFormData({...formData, ebysDate:e.target.value})} className="border p-2 rounded text-gray-900"/></div>
+                <textarea placeholder="Açıklama" value={formData.description} onChange={e=>setFormData({...formData, description:e.target.value})} className="w-full border p-2 rounded text-gray-900" rows={3}/>
+                
+                {/* OGM Drive Section for New Demands */}
+                {!demandToEdit && (
+                  <div className="border border-gray-200 p-3 rounded bg-gray-50">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Doküman Ekleme</label>
+                    {!showDriveForm ? (
+                      <button type="button" onClick={handleStartDriveFlow} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white text-gray-800 rounded border hover:bg-gray-100 transition-colors">
+                        <Icons.ExternalLink className="w-5 h-5" /><span>OGM Drive'a Yükle</span>
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <input id="drive-did-upload" type="checkbox" checked={driveDidUpload} onChange={(e) => setDriveDidUpload(e.target.checked)} className="w-4 h-4 text-blue-600 rounded" />
+                            <label htmlFor="drive-did-upload" className="text-sm font-medium text-gray-900">Dosya yükledin mi?</label>
+                        </div>
+                        {driveDidUpload && (
+                            <div className="space-y-2">
+                                <select value={driveAttachmentType} onChange={(e) => setDriveAttachmentType(e.target.value)} className="w-full border rounded p-2 text-sm text-gray-900">
+                                    {attachmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                                {driveAttachmentType === 'Diğer' && <input type="text" placeholder="Ek Adı" value={driveOtherAttachmentName} onChange={(e) => setDriveOtherAttachmentName(e.target.value)} className="w-full border rounded p-2 text-sm text-gray-900" />}
+                            </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700">Birimler</label>
+                        <div className="flex flex-wrap gap-1 p-2 border rounded min-h-[40px] bg-gray-50">
+                            {formData.requestingUnits.map(u=><span key={u} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded flex items-center gap-1">{u} <button type="button" onClick={()=>handleRemoveUnit(u)} className="hover:text-red-500"><Icons.XCircle className="w-3 h-3"/></button></span>)}
+                        </div>
+                        <div className="flex gap-2">
+                            <select value={formData.unitToAdd} onChange={e=>setFormData({...formData, unitToAdd:e.target.value})} className="border p-1 text-sm flex-grow text-gray-900">
+                                <option value="" disabled>Seç...</option>
+                                {Object.values(RequestingUnit).filter(u=>!formData.requestingUnits.includes(u)).map(u=><option key={u} value={u}>{u}</option>)}
+                            </select>
+                            <button type="button" onClick={handleAddUnit} className="bg-gray-200 px-3 rounded text-sm text-gray-900 hover:bg-gray-300">Ekle</button>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <select value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white">{Object.values(DemandType).map(t=><option key={t} value={t}>{t}</option>)}</select>
+                        <select value={formData.priority} onChange={e=>setFormData({...formData, priority:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white">{Object.values(DemandPriority).map(p=><option key={p} value={p}>{p}</option>)}</select>
+                        <select value={formData.status} onChange={e=>setFormData({...formData, status:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white">{Object.values(DemandStatus).map(s=><option key={s} value={s}>{s}</option>)}</select>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded text-gray-900 hover:bg-gray-300 transition-colors">İptal</button>
+                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Kaydet</button>
+                </div>
+            </form>
+          </div>
+        </div>
+      );
+    };
+
+    // --- KanbanCard ---
+    const KanbanCard = ({ demand, onEdit, onShowProgress, onRequestDelete, isProcessing }) => {
+      const priorityStyles = {
+        [DemandPriority.YUKSEK]: { bg: 'bg-red-100', text: 'text-red-700' },
+        [DemandPriority.ORTA]: { bg: 'bg-orange-100', text: 'text-orange-700' },
+        [DemandPriority.DUSUK]: { bg: 'bg-yellow-100', text: 'text-yellow-700' },
+      };
+      const statusTypeStyles = {
+        [DemandStatus.YENI]: 'bg-blue-100 text-blue-800',
+        [DemandStatus.ISLEMDE]: 'bg-orange-100 text-orange-800',
+        [DemandStatus.TAMAMLANDI]: 'bg-green-100 text-green-800',
+      };
+      const pStyles = priorityStyles[demand.priority] || priorityStyles[DemandPriority.ORTA];
+      const tStyle = statusTypeStyles[demand.status] || statusTypeStyles[DemandStatus.YENI];
+      
+      const handleEditClick = (e) => { e.stopPropagation(); onEdit(demand); };
+      const handleDeleteClick = (e) => { e.stopPropagation(); onRequestDelete(demand.id); };
+
+      const hasActiveReminder = demand.progressHistory.some(
+          item => item.reminderDate && new Date(item.reminderDate) <= new Date() && !item.reminderRead
+      );
+
+      return (
+        <div className={`relative bg-white rounded-lg shadow-sm p-4 mb-4 border hover:shadow-lg transition-all duration-200 flex flex-col cursor-pointer ${hasActiveReminder ? 'border-red-500 animate-pulse-red' : 'border-gray-200'}`} onDoubleClick={() => onShowProgress(demand)}>
+          {hasActiveReminder && (
+              <div className="absolute -top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow z-10 animate-bounce">
+                  HATIRLATMA NOTU
+              </div>
+          )}
+          <div className="flex justify-between items-start mb-2">
+            <span className={`text-xs font-semibold px-2.5 py-0.5 rounded ${tStyle}`}>{demand.type}</span>
+            <div className="flex space-x-2 flex-shrink-0">
+              <button onClick={handleEditClick} className="text-gray-400 hover:text-blue-600 transition-colors" title="Düzenle"><Icons.Edit className="w-4 h-4" /></button>
+              <button onClick={handleDeleteClick} className="text-gray-400 hover:text-red-500 transition-colors" title="Sil"><Icons.Trash className="w-4 h-4" /></button>
+            </div>
+          </div>
+          <h4 className="font-semibold text-gray-800 break-words mb-2">{demand.title}</h4>
+          {demand.requestingUnit && (
+            <div className="flex items-center text-sm text-gray-500 mb-2">
+              <Icons.Building className="w-4 h-4 mr-1.5 text-gray-400" />
+              <span className="font-medium">{demand.requestingUnit}</span>
+            </div>
+          )}
+          <p className="text-sm text-gray-600 mb-4 break-words flex-grow line-clamp-3">{demand.description}</p>
+          <div className="border-t border-gray-200 pt-3 mt-auto space-y-2">
+            <div className="flex justify-between items-center text-xs text-gray-500">
+              <span className="font-semibold text-gray-600">EBYS No: {demand.ebysNumber}</span>
+              <span className="flex items-center gap-1.5"><Icons.Calendar className="w-4 h-4" />{demand.ebysDate === 'N/A' ? 'N/A' : new Date(demand.ebysDate).toLocaleDateString('tr-TR')}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${pStyles.bg} ${pStyles.text}`}><Icons.Flag className="w-3 h-3"/>{demand.priority}</span>
+            </div>
+          </div>
+          {isProcessing && (
+            <div className="absolute inset-0 bg-white/70 rounded-lg flex items-center justify-center transition-opacity duration-300">
+              <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- KanbanColumn ---
+    const KanbanColumn = ({ status, demands, onEdit, onShowProgress, onRequestDelete, processingDemands }) => {
+      const statusStyles = {
+        [DemandStatus.YENI]: { border: 'border-blue-500', text: 'text-blue-600' },
+        [DemandStatus.ISLEMDE]: { border: 'border-orange-500', text: 'text-orange-600' },
+        [DemandStatus.TAMAMLANDI]: { border: 'border-green-500', text: 'text-green-600' },
+      };
+      const statusDisplayNames = { [DemandStatus.YENI]: 'YENİ TALEPLER', [DemandStatus.ISLEMDE]: 'İŞLEMDEKİ TALEPLER', [DemandStatus.TAMAMLANDI]: 'TAMAMLANAN TALEPLER' };
+      const styles = statusStyles[status] || statusStyles[DemandStatus.YENI];
+
+      return (
+        <div className="bg-gray-100 rounded-lg p-4 w-full flex flex-col min-h-[calc(100vh-260px)]">
+          <div className={`border-l-4 ${styles.border} pl-2 mb-4`}>
+            <h3 className={`font-bold text-lg ${styles.text} flex items-center gap-2`}>
+              {statusDisplayNames[status] || status}
+              <span className="text-sm bg-gray-200 text-gray-600 rounded-full px-2.5 py-0.5">{demands.length}</span>
+            </h3>
+          </div>
+          <div className="flex-grow">
+            {demands.map(demand => <KanbanCard key={demand.id} demand={demand} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} isProcessing={processingDemands.has(demand.id)} />)}
+            {demands.length === 0 && (
+              <div className="flex items-center justify-center h-full text-center text-sm text-gray-500 py-10">
+                <div className="bg-white/50 p-8 rounded-lg border-2 border-dashed border-gray-300">Bu bölümde talep bulunmuyor.</div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // --- KanbanBoard ---
+    const KanbanBoard = ({ demands, onEdit, activeStatus, onShowProgress, onRequestDelete, processingDemands }) => (
+      <div className="px-4 sm:px-6 md:px-8 pb-8 pt-4">
+        <div className="w-full">
+          <KanbanColumn key={activeStatus} status={activeStatus} demands={demands} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} processingDemands={processingDemands} />
+        </div>
+      </div>
+    );
+
+    // --- Header ---
+    const Header = ({ onAddDemand, showUploadButton, onUpload }) => (
+      <header className="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+            <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3l0Z2I0Zml2bXJhM201dGhyNWh6YmN3a3A1NnA1c3Y3bGdidXd6bSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/xzSGnyFEGYQmTe29yi/giphy.gif" alt="Logo" className="h-12 w-auto mix-blend-multiply" />
+            <h1 className="text-xl font-bold text-gray-800 hidden sm:block">Task Line</h1>
+        </div>
+        <div className="flex items-center gap-4">
+          {showUploadButton && (
+            <button onClick={onUpload} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+              <Icons.CloudUp className="w-5 h-5" /><span>Veri Yükle</span>
+            </button>
+          )}
+          <button onClick={onAddDemand} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <Icons.Plus className="w-5 h-5" /><span>Yeni Talep Oluştur</span>
+          </button>
+        </div>
+      </header>
+    );
+
+    // --- FilterControls ---
+    const FilterControls = ({ counts, activeStatus, onStatusChange, onExport }) => {
+      const statusOrder = [DemandStatus.YENI, DemandStatus.ISLEMDE, DemandStatus.TAMAMLANDI];
+      const statusStyles = {
+        [DemandStatus.YENI]: { active: 'bg-blue-600 text-white shadow-md', inactive: 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50' },
+        [DemandStatus.ISLEMDE]: { active: 'bg-orange-500 text-white shadow-md', inactive: 'bg-white text-orange-600 border border-orange-200 hover:bg-orange-50' },
+        [DemandStatus.TAMAMLANDI]: { active: 'bg-green-600 text-white shadow-md', inactive: 'bg-white text-green-600 border border-green-200 hover:bg-green-50' },
+      };
+      const statusDisplayNames = { [DemandStatus.YENI]: 'YENİ TALEPLER', [DemandStatus.ISLEMDE]: 'İŞLEMDEKİLER', [DemandStatus.TAMAMLANDI]: 'TAMAMLANANLAR' };
+      
+      return (
+        <div className="pt-2">
+          <div className="bg-white p-2 rounded-xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 border border-gray-100">
+            <div className="flex-1 w-full grid grid-cols-3 gap-2">
+              {statusOrder.map(status => {
+                const isActive = activeStatus === status;
+                const style = statusStyles[status];
+                return (
+                  <button key={status} onClick={() => onStatusChange(status)} className={`flex flex-col sm:flex-row items-center justify-center py-2 px-1 rounded-lg transition-all duration-200 text-xs sm:text-sm font-bold ${isActive ? style.active : style.inactive}`}>
+                    <span>{statusDisplayNames[status]}</span>
+                    <span className={`ml-0 sm:ml-2 mt-1 sm:mt-0 px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs ${isActive ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-600'}`}>{counts[status]}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={onExport} className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-200 font-medium text-sm transition-colors">
+              <Icons.Download className="w-4 h-4" /><span>Excel</span>
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    // --- TypeFilterControls ---
+    const TypeFilterControls = ({ filters, onSearch }) => {
+      const [internalFilters, setInternalFilters] = useState(filters);
+      useEffect(() => { setInternalFilters(filters); }, [filters]);
+      useEffect(() => {
+        const handler = setTimeout(() => { 
+            if (JSON.stringify(internalFilters) !== JSON.stringify(filters)) {
+              onSearch(internalFilters);
+            } 
+        }, 300);
+        return () => clearTimeout(handler);
+      }, [internalFilters, filters, onSearch]);
+      
+      const handleTermChange = (e) => setInternalFilters(prev => ({ ...prev, term: e.target.value }));
+      const handleTypeChange = (e) => setInternalFilters(prev => ({ ...prev, type: e.target.value }));
+      const handleUnitChange = (e) => setInternalFilters(prev => ({ ...prev, requestingUnit: e.target.value }));
+
+      return (
+        <div className="pt-2">
+          <div className="bg-white p-4 rounded-xl shadow-sm flex flex-col md:flex-row items-center gap-3 border border-gray-100">
+            <div className="relative flex-grow w-full">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icons.Search className="h-5 w-5 text-gray-400" /></div>
+                <input type="search" value={internalFilters.term} onChange={handleTermChange} className="block w-full rounded-lg border border-gray-300 bg-gray-50 text-gray-900 pl-10 p-2.5 focus:border-blue-500 focus:ring-blue-500 sm:text-sm" placeholder="Ara (EBYS No, Başlık, Açıklama...)" />
+            </div>
+            <select value={internalFilters.type} onChange={handleTypeChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                <option value="all">Tüm Talep Türleri</option>
+                {Object.values(DemandType).map(type => <option key={type} value={type}>{type}</option>)}
+            </select>
+            <select value={internalFilters.requestingUnit} onChange={handleUnitChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                <option value="all">Tüm Birimler</option>
+                {Object.values(RequestingUnit).map(unit => <option key={unit} value={unit}>{unit}</option>)}
+            </select>
+          </div>
+        </div>
+      );
+    };
+
+    // ==========================================
+    // BÖLÜM 5: ANA UYGULAMA (APP)
+    // ==========================================
+
+    const App = () => {
+      const [demands, setDemands] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [isAppVisible, setIsAppVisible] = useState(false);
+      const [error, setError] = useState(null);
+      const [processingDemands, setProcessingDemands] = useState(new Set());
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [demandToEdit, setDemandToEdit] = useState(null);
+      const [activeStatus, setActiveStatus] = useState(DemandStatus.YENI);
+      const [filtersByStatus, setFiltersByStatus] = useState({
+        [DemandStatus.YENI]: { type: 'all', term: '', requestingUnit: 'all' },
+        [DemandStatus.ISLEMDE]: { type: 'all', term: '', requestingUnit: 'all' },
+        [DemandStatus.TAMAMLANDI]: { type: 'all', term: '', requestingUnit: 'all' },
+      });
+      const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+      const [selectedDemandForProgress, setSelectedDemandForProgress] = useState(null);
+      const [deletionTarget, setDeletionTarget] = useState(null);
+      const [toast, setToast] = useState(null);
+      
+      // Rapor Modal State'leri
+      const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+      const [reportStartDate, setReportStartDate] = useState('');
+      const [reportEndDate, setReportEndDate] = useState('');
+
+      const fileInputRef = useRef(null);
+      
+      const metaTag = document.querySelector('meta[name="google-script-url"]');
+      const SCRIPT_URL = metaTag ? metaTag.getAttribute('content') : '';
+
+      if (!SCRIPT_URL) {
+          console.error("Google Apps Script URL'si HTML meta etiketinde bulunamadı.");
+      }
+
+      const callApi = async (action, payload) => {
+        if (!SCRIPT_URL) throw new Error("API URL bulunamadı");
+        const res = await fetch(SCRIPT_URL, { method: 'POST', mode: 'cors', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, payload }), redirect: 'follow' });
+        if (!res.ok) throw new Error(`API hatası: ${res.status} ${res.statusText}`);
+        const jsonResponse = await res.json();
+        if (jsonResponse.status === 'error') throw new Error(`API Hatası: ${jsonResponse.message}`);
+        return jsonResponse.data;
+      };
+
+      const api = {
+        getDemands: () => callApi('getDemands'),
+        saveDemand: (demand) => callApi('saveDemand', demand),
+        deleteDemand: (id) => callApi('deleteDemand', id),
+        batchSaveDemands: (demands) => callApi('batchSaveDemands', demands),
+      };
+
+      const showToast = (message, type = 'success') => setToast({ id: Date.now(), message, type });
+
+      const refreshDemands = useCallback(async (isSilent = false) => {
+        try {
+          if (!isSilent && demands.length > 0) setLoading(true);
+          setError(null);
+          const data = await api.getDemands();
+          setDemands(data);
+        } catch (err) {
+          const errorMessage = err.message || 'Bilinmeyen bir hata oluştu.';
+          setError(`Veriler yüklenemedi: ${errorMessage}`);
+          console.error(err);
+        } finally {
+            setLoading(false);
+        }
+      }, [demands]);
+
+      useEffect(() => { refreshDemands(); }, []);
+      
+      const handleOpenAddModal = () => { setDemandToEdit(null); setIsModalOpen(true); };
+      const handleOpenEditModal = (demand) => { setDemandToEdit(demand); setIsModalOpen(true); };
+      const handleCloseModal = () => { setIsModalOpen(false); setDemandToEdit(null); };
+
+      const handleSaveDemand = async (demandData) => {
+        const originalDemands = [...demands];
+        const isEditing = !!demandData.id;
+        let optimisticDemand;
+        const { ogmDriveAttachmentName, ...restOfData } = demandData;
+
+        if (isEditing) {
+          const existingDemand = originalDemands.find(d => d.id === restOfData.id);
+          if (!existingDemand) { showToast("Güncellenecek talep bulunamadı.", "error"); return; }
+          optimisticDemand = { ...existingDemand, ...restOfData };
+        } else {
+          const now = new Date();
+          const progressHistory = [];
+          if (ogmDriveAttachmentName) {
+            const formatDateTime = (date) => { const pad = (num) => num.toString().padStart(2, '0'); return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`; };
+            progressHistory.push({ date: now.toISOString(), description: `Talep Oluşturuldu Talep Eki Adı: ${ogmDriveAttachmentName} Talep Oluşturma Tarihi: ${formatDateTime(now)}`, isSupportNote: false });
+          }
+          optimisticDemand = { ...restOfData, id: Date.now(), createdAt: now.toISOString(), progressHistory, attachments: [] };
+        }
+
+        setDemands(prev => isEditing ? prev.map(d => d.id === optimisticDemand.id ? optimisticDemand : d) : [...prev, optimisticDemand]);
+        handleCloseModal();
+        setProcessingDemands(prev => new Set(prev).add(optimisticDemand.id));
+
+        try {
+          await api.saveDemand(optimisticDemand);
+          showToast(isEditing ? 'Talep başarıyla güncellendi.' : 'Talep başarıyla oluşturuldu.');
+        } catch (err) {
+          console.error("Kayıt hatası:", err);
+          showToast("Talep kaydedilemedi.", "error");
+          setDemands(originalDemands);
+        } finally {
+          setProcessingDemands(prev => { const next = new Set(prev); next.delete(optimisticDemand.id); return next; });
+        }
+      };
+      
+      const requestDemandDeletion = (demandId) => setDeletionTarget({ type: 'demand', demandId });
+      const requestProgressItemDeletion = (demandId, progressIndex, description) => setDeletionTarget({ type: 'progressItem', demandId, progressIndex, description });
+      
+      const handleConfirmDeletion = async () => {
+        if (!deletionTarget) return;
+        const originalDemands = [...demands];
+        const { type, demandId, progressIndex, description } = deletionTarget;
+        setDeletionTarget(null);
+
+        if (type === 'demand') {
+            setDemands(prev => prev.filter(d => d.id !== demandId));
+            try { 
+                const result = await api.deleteDemand(demandId);
+                if (result && result.success) { showToast('Talep başarıyla silindi.'); } 
+                else { throw new Error(result.message || 'Silme işlemi başarısız.'); }
+            }
+            catch (err) { console.error("Silme hatası:", err); showToast('Talep silinemedi.', 'error'); setDemands(originalDemands); }
+        } else if (type === 'progressItem' && progressIndex !== undefined) {
+            const demandToUpdate = originalDemands.find(d => d.id === demandId);
+            if (!demandToUpdate) return;
+            
+            // Log deletion instead of complete removal (Audit Trail)
+            const now = new Date();
+            const deletedNote = demandToUpdate.progressHistory[progressIndex];
+            const updatedHistory = demandToUpdate.progressHistory.filter((_, index) => index !== progressIndex);
+            
+            // Add system note for deletion
+            updatedHistory.push({
+                date: now.toISOString(),
+                description: `(SİSTEM NOTU) Bir not silindi.\nSilinme Tarihi: ${now.toLocaleString('tr-TR')}\nSilinen İçerik: "${description || deletedNote.description}"`,
+                isSupportNote: false
+            });
+
+            const updatedDemand = { ...demandToUpdate, progressHistory: updatedHistory };
+            setDemands(prev => prev.map(d => d.id === demandId ? updatedDemand : d));
+            setSelectedDemandForProgress(updatedDemand);
+            setProcessingDemands(prev => new Set(prev).add(demandId));
+            try { await api.saveDemand(updatedDemand); showToast('Akış notu silindi.'); }
+            catch (err) { console.error("Akış silme hatası:", err); setDemands(originalDemands); setSelectedDemandForProgress(demandToUpdate); showToast('Akış notu silinemedi.', 'error'); }
+            finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
+        }
+      };
+      const handleCancelDeletion = () => setDeletionTarget(null);
+      const handleStatusChange = (status) => setActiveStatus(status);
+      const handleFilterChange = useCallback((newFilters) => setFiltersByStatus(prev => ({ ...prev, [activeStatus]: newFilters })), [activeStatus]);
+      const handleShowProgress = (demand) => { setSelectedDemandForProgress(demand); setIsProgressModalOpen(true); };
+      const handleCloseProgressModal = () => { setIsProgressModalOpen(false); setSelectedDemandForProgress(null); };
+
+      const updateDemandProgress = async (demandId, updateFn, successMessage, errorMessage) => {
+        const originalDemands = [...demands];
+        const demandToUpdate = originalDemands.find(d => d.id === demandId);
+        if (!demandToUpdate) return;
+        const updatedDemand = updateFn(demandToUpdate);
+        setDemands(prev => prev.map(d => d.id === demandId ? updatedDemand : d));
+        setSelectedDemandForProgress(updatedDemand);
+        setProcessingDemands(prev => new Set(prev).add(demandId));
+        try { await api.saveDemand(updatedDemand); showToast(successMessage, 'success'); }
+        catch (err) { console.error("Güncelleme hatası:", err); setDemands(originalDemands); setSelectedDemandForProgress(originalDemands.find(d => d.id === demandId) || null); showToast(errorMessage, 'error'); }
+        finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
+      };
+
+      const handleUpdateDemandFromModal = (updatedDemand) => {
+        setDemands(prev => prev.map(d => d.id === updatedDemand.id ? updatedDemand : d));
+        api.saveDemand(updatedDemand).catch(err => console.error("Okuma durumu kaydedilemedi", err));
+      };
+
+      const handleAddProgressItems = (demandId, newItems) => {
+        updateDemandProgress( demandId, d => {
+            const newStatus = d.status === DemandStatus.YENI && newItems.length > 0 ? DemandStatus.ISLEMDE : d.status;
+            return { ...d, progressHistory: [...d.progressHistory, ...newItems], status: newStatus };
+          }, 'Akış notları eklendi.', 'Akış notları eklenemedi.'
+        );
+      };
+      const handleCompleteDemand = (demandId, completionDate, completionNote) => {
+        updateDemandProgress( demandId, d => {
+            const [year, month, day] = completionDate.split('-').map(Number);
+            const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+            const finalNote = completionNote.trim() || 'Akış notu düzeltilir';
+            return { ...d, status: DemandStatus.TAMAMLANDI, progressHistory: [...d.progressHistory, { date: endOfDay.toISOString(), description: finalNote, isSupportNote: false, isCompletionNote: true }] };
+          }, 'Talep tamamlandı.', 'Talep tamamlanamadı.'
+        ).then(() => handleCloseProgressModal());
+      };
+      
+      const handleEditProgressItem = (demandId, progressIndex, updatedItem, originalItem) => {
+        updateDemandProgress( demandId, d => {
+            const updatedHistory = [...d.progressHistory]; 
+            updatedHistory[progressIndex] = updatedItem;
+            
+            // Add audit log for the edit
+            const now = new Date();
+            updatedHistory.push({
+                date: now.toISOString(),
+                description: `(SİSTEM NOTU) Bir not düzenlendi.\nİşlem Tarihi: ${now.toLocaleString('tr-TR')}\nEski İçerik: "${originalItem.description}"\nYeni İçerik: "${updatedItem.description}"`,
+                isSupportNote: false
+            });
+
+            return { ...d, progressHistory: updatedHistory };
+          }, 'Akış notu güncellendi.', 'Akış notu güncellenemedi.'
+        );
+      };
+
+      const handleRequestEditFromProgress = (demand) => { handleCloseProgressModal(); handleOpenEditModal(demand); };
+      const handleUploadClick = () => fileInputRef.current?.click();
+      
+      const handleFileChange = (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                if (!e.target?.result) return;
+                setLoading(true); setError(null);
+                const data = e.target.result;
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = 'DURUM TABLO';
+                if (!workbook.SheetNames.includes(sheetName)) throw new Error(`Excel dosyasında "${sheetName}" adında bir sayfa bulunamadı.`);
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { cellDates: true });
+                if (jsonData.length === 0) throw new Error("Yüklenecek veri bulunamadı.");
+                const supportPersonMap = { 'T': 'Tuğba Hanım', 'R': 'Reyhan Hanım', 'S': 'Serhat Bey', 'F': 'Firuze Hanım' };
+                const mappedDemands = jsonData.slice(0, 132).map((row, index) => {
+                    const baslik = row['BAŞLIK'] || 'Başlık Yok';
+                    const aciklama = row['AÇIKLAMA'] || baslik;
+                    const talepKismi = row['TALEP KISIM']?.trim() || '';
+                    const talepTuru = row['TALEP TÜRÜ']?.trim() || '';
+                    const ebysNo = row['TALEP SAYI NO'] ? String(row['TALEP SAYI NO']).trim() : '';
+                    const talepTarihi = row['TALEP TARİHİ'];
+                    const destekNotu = row['DESTEK HİZMETLERİ NOTU'] || '';
+                    const akisNotu = row['AKIŞ NOTU'] || '';
+                    const destekPersonelKisaltma = String(row['DESTEK HİZMETİNDEN KİMDEN BİLGİ ALINDI ?'] || '').trim().toUpperCase();
+                    let ebysDate, createdAt;
+                    if (talepTarihi instanceof Date && !isNaN(talepTarihi.getTime())) { ebysDate = talepTarihi.toISOString(); createdAt = talepTarihi.toISOString(); }
+                    else { ebysDate = 'N/A'; createdAt = new Date().toISOString(); }
+                    const requestingUnit = Object.values(RequestingUnit).find(u => u.toUpperCase() === talepKismi.toUpperCase()) || talepKismi;
+                    const normalizeTypeString = (str) => str.toUpperCase().replace(/[\s()]/g, '');
+                    const type = Object.values(DemandType).find(t => normalizeTypeString(t) === normalizeTypeString(talepTuru)) || DemandType.MALZEME;
+                    const progressHistory = []; const baseDate = new Date(); let dateOffset = 0;
+                    if (akisNotu) akisNotu.split('\n').reverse().forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim(), isSupportNote: false }); });
+                    if (destekNotu) { const supportPerson = supportPersonMap[destekPersonelKisaltma] || destekPersonelKisaltma || 'Belirtilmemiş'; destekNotu.split('\n').forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim(), isSupportNote: true, supportPerson }); }); }
+                    const status = index < 102 ? DemandStatus.TAMAMLANDI : DemandStatus.ISLEMDE;
+                    return { id: Date.now() + index, title: baslik, description: aciklama, requestingUnit, type, status, priority: DemandPriority.ORTA, createdAt, ebysNumber: ebysNo, ebysDate, progressHistory, attachments: [] };
+                });
+                await api.batchSaveDemands(mappedDemands);
+                await refreshDemands();
+                alert(`${mappedDemands.length} adet talep başarıyla yüklendi.`);
+            } catch (error) { const errorMessage = error.message || "Hata oluştu."; console.error("Excel hatası:", errorMessage); setError(`Veri yüklenemedi: ${errorMessage}`); alert(`Hata: ${errorMessage}`);
+            } finally { setLoading(false); }
+        };
+        reader.onerror = (error) => { console.error("Dosya okunurken hata:", error); alert("Dosya okuma hatası."); }
+        reader.readAsArrayBuffer(file);
+        if (event.target) event.target.value = '';
+      };
+      
+      const priorityOrder = { [DemandPriority.YUKSEK]: 2, [DemandPriority.ORTA]: 1, [DemandPriority.DUSUK]: 0 };
+      
+      const hasActiveReminder = (d) => {
+          return d.progressHistory.some(item => 
+            item.reminderDate && new Date(item.reminderDate) <= new Date() && !item.reminderRead
+          );
+      };
+
+      const getFilteredDemandsForStatus = (status) => {
+        const statusFilters = filtersByStatus[status];
+        return demands
+          .filter(d => d.status === status)
+          .filter(d => statusFilters.type === 'all' || d.type === statusFilters.type)
+          .filter(d => statusFilters.requestingUnit === 'all' || (d.requestingUnit || '').includes(statusFilters.requestingUnit))
+          .filter(d => {
+            const searchTerm = statusFilters.term.toLocaleLowerCase('tr-TR');
+            if (!searchTerm) return true;
+            return (
+              d.title.toLocaleLowerCase('tr-TR').includes(searchTerm) ||
+              d.description.toLocaleLowerCase('tr-TR').includes(searchTerm) ||
+              String(d.ebysNumber).toLocaleLowerCase('tr-TR').includes(searchTerm) ||
+              (d.requestingUnit || '').toLocaleLowerCase('tr-TR').includes(searchTerm)
+            );
+          });
+      };
+
+      const demandsForBoard = getFilteredDemandsForStatus(activeStatus).sort((a, b) => {
+          const aReminder = hasActiveReminder(a);
+          const bReminder = hasActiveReminder(b);
+          if (aReminder && !bReminder) return -1;
+          if (!aReminder && bReminder) return 1;
+          return priorityOrder[b.priority] - priorityOrder[a.priority];
+      });
+
+      const statusCounts = {
+        [DemandStatus.YENI]: getFilteredDemandsForStatus(DemandStatus.YENI).length,
+        [DemandStatus.ISLEMDE]: getFilteredDemandsForStatus(DemandStatus.ISLEMDE).length,
+        [DemandStatus.TAMAMLANDI]: getFilteredDemandsForStatus(DemandStatus.TAMAMLANDI).length,
+      };
+
+      // EXCEL EXPORT HELPERS (HTML BASED FOR STYLING)
+      const exportToExcelHTML = (filename, rows) => {
+            let html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
+            html += '<head><meta http-equiv="content-type" content="text/plain; charset=UTF-8"/></head><body>';
+            html += '<table border="1" style="border-collapse: collapse; width: 100%;">';
+            
+            // Add Header
+            html += '<thead><tr>';
+            rows[0].forEach(header => {
+                html += `<th style="background-color: #C6E0B4; color: #000000; border: 1px solid #000000; font-weight: bold; padding: 10px; text-align: center;">${header}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            
+            // Add Data
+            rows.slice(1).forEach(row => {
+                html += '<tr>';
+                row.forEach(cell => {
+                    html += `<td style="border: 1px solid #000000; padding: 5px; vertical-align: top;">${cell || ''}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></body></html>';
+            
+            const blob = new Blob([html], {type: 'application/vnd.ms-excel'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+      };
+
+      const handleExportToExcel = () => {
+        if (demandsForBoard.length === 0) { alert('Veri yok.'); return; }
+        
+        const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AKIŞ NOTLARI', 'DESTEK HİZMETLERİ NOTU'];
+        
+        const data = demandsForBoard.map((d, index) => {
+          const akisNotlari = d.progressHistory.filter(p => !p.isSupportNote).map(p => `${new Date(p.date).toLocaleDateString('tr-TR')}: ${p.description}`).join('\n');
+          const destekNotlari = d.progressHistory.filter(p => p.isSupportNote).map(p => `${new Date(p.date).toLocaleDateString('tr-TR')} (${p.supportPerson || 'Belirtilmemiş'}): ${p.description}`).join('\n');
+          const ebysTarihi = d.ebysDate === 'N/A' ? 'N/A' : new Date(d.ebysDate).toLocaleDateString('tr-TR');
+          return [index + 1, d.title, d.requestingUnit, d.type, d.ebysNumber, ebysTarihi, akisNotlari, destekNotlari];
+        });
+
+        exportToExcelHTML(`talepler_${activeStatus}.xls`, [headers, ...data]);
+      };
+      
+      const handleGenerateFlowReport = () => {
+          if (!reportStartDate || !reportEndDate) {
+              alert("Lütfen başlangıç ve bitiş tarihlerini seçin.");
+              return;
+          }
+          
+          const start = new Date(reportStartDate);
+          start.setHours(0,0,0,0);
+          const end = new Date(reportEndDate);
+          end.setHours(23,59,59,999);
+          
+          const reportRows = [['TALEP BAŞLIĞI', 'OLAY TARİHİ', 'OLAY TÜRÜ', 'AÇIKLAMA']];
+          
+          let hasData = false;
+
+          demands.forEach(d => {
+              // 1. Yeni Talep (Cümle Formatı)
+              const created = new Date(d.createdAt);
+              if (created >= start && created <= end) {
+                  const dateStr = created.toLocaleString('tr-TR');
+                  const sentence = `${d.title} konulu yeni bir iş talebi, ${d.requestingUnit} birimi tarafından oluşturulmuştur.`;
+                  reportRows.push([d.title, dateStr, 'Talep Açıldı', sentence]);
+                  hasData = true;
+              }
+              
+              // 2. Kapanış (Cümle Formatı)
+              if (d.status === DemandStatus.TAMAMLANDI) {
+                  const compItem = d.progressHistory.find(i => i.isCompletionNote);
+                  if (compItem) {
+                      const compDate = new Date(compItem.date);
+                      if (compDate >= start && compDate <= end) {
+                          const dateStr = compDate.toLocaleString('tr-TR');
+                          const sentence = `${d.title} konulu iş tamamlanmış ve kapatılmıştır.`;
+                          reportRows.push([d.title, dateStr, 'Talep Kapatıldı', sentence]);
+                          hasData = true;
+                      }
+                  }
+              }
+
+              // 3. Akış Notları (Cümle Formatı) - Includes all types now
+              const relevantProgress = d.progressHistory.filter(i => {
+                  const itemDate = new Date(i.date);
+                  return !i.isCompletionNote && itemDate >= start && itemDate <= end;
+              });
+              
+              if (relevantProgress.length > 0) {
+                  relevantProgress.forEach(i => {
+                      const dateStr = new Date(i.date).toLocaleString('tr-TR');
+                      let sentence = '';
+                      let type = 'Akış Notu';
+                      
+                      // Check for specific markers or flags
+                      if (i.description.includes('Hatırlatma okundu')) {
+                          type = 'Hatırlatma Okundu';
+                          sentence = `${d.title} işi için hatırlatma okundu bilgisi kaydedildi: "${i.description}"`;
+                      } else if (i.description.includes('(SİSTEM NOTU)')) {
+                          type = 'Sistem Kaydı (Düzenleme/Silme)';
+                          sentence = `${d.title} işi için sistem kaydı: "${i.description}"`;
+                      } else if (i.isSupportNote) {
+                          type = 'Destek Notu';
+                          sentence = `${d.title} işi için ${i.supportPerson || 'destek personeli'} tarafından şu not eklendi: "${i.description}"`;
+                      } else {
+                          sentence = `${d.title} işi için şu akış notu eklendi: "${i.description}"`;
+                      }
+                      reportRows.push([d.title, dateStr, type, sentence]);
+                  });
+                  hasData = true;
+              }
+          });
+          
+          if (!hasData) {
+              alert("Seçilen tarih aralığında veri yok.");
+              return;
+          }
+
+          exportToExcelHTML(`akis_raporu_${reportStartDate}_${reportEndDate}.xls`, reportRows);
+          setIsReportModalOpen(false);
+      };
+      
+      const openReportModal = () => {
+          const today = new Date().toISOString().split('T')[0];
+          setReportStartDate(today);
+          setReportEndDate(today);
+          setIsReportModalOpen(true);
+      }
+
+      return (
+        <div className="min-h-screen">
+            <LoadingCurtain isLoading={loading} onTransitionEnd={() => setIsAppVisible(true)} />
+            <div className={`transition-opacity duration-500 ${isAppVisible ? 'opacity-100' : 'opacity-0'}`}>
+                <Header onAddDemand={handleOpenAddModal} showUploadButton={demands.length === 0} onUpload={handleUploadClick} />
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xlsx, .xls" />
+                <main>
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 space-y-4 relative">
+                         <div className="sticky top-[80px] z-40 bg-brand-bg pb-4 shadow-sm -mx-4 px-4 md:px-8 md:-mx-8 pt-2">
+                             <FilterControls counts={statusCounts} activeStatus={activeStatus} onStatusChange={handleStatusChange} onExport={handleExportToExcel} />
+                             
+                             <div className="flex justify-end mt-2">
+                                 <button onClick={openReportModal} className="text-sm bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center gap-2">
+                                     <span className="font-semibold">Akış Raporu İndir (Excel)</span>
+                                 </button>
+                             </div>
+
+                             <TypeFilterControls filters={filtersByStatus[activeStatus]} onSearch={handleFilterChange} />
+                         </div>
+                         
+                         {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200">Hata: {error}</div>}
+                         
+                         {!error && (
+                            <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} />
+                         )}
+                    </div>
+                </main>
+                
+                <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} />
+                <DemandProgressModal 
+                    isOpen={isProgressModalOpen} 
+                    onClose={handleCloseProgressModal} 
+                    demand={selectedDemandForProgress} 
+                    onAddProgressItems={handleAddProgressItems} 
+                    onEditDemand={handleUpdateDemandFromModal} 
+                    onCompleteDemand={handleCompleteDemand} 
+                    onEditProgressItem={handleEditProgressItem} 
+                    onRequestDeleteProgressItem={requestProgressItemDeletion} 
+                />
+                <ConfirmationModal isOpen={!!deletionTarget} onClose={handleCancelDeletion} onConfirm={handleConfirmDeletion} title="Silme Onayı" message="Bu öğeyi silmek istediğinizden emin misiniz? (Silinen öğeler sistem kaydı olarak saklanacaktır)." />
+                
+                {isReportModalOpen && (
+                    <div className="fixed inset-0 bg-black/60 z-[60] flex justify-center items-center p-4 backdrop-blur-sm" onClick={() => setIsReportModalOpen(false)}>
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-900" onClick={e => e.stopPropagation()}>
+                            <h3 className="text-lg font-bold mb-4 text-gray-900">Akış Raporu Tarih Aralığı</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Başlangıç</label>
+                                    <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Bitiş</label>
+                                    <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/>
+                                </div>
+                            </div>
+                            <div className="mt-6 flex justify-end gap-3">
+                                <button onClick={() => setIsReportModalOpen(false)} className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium">İptal</button>
+                                <button onClick={handleGenerateFlowReport} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm">Rapor Oluştur</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+            </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
