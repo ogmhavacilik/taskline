@@ -1,4 +1,4 @@
-﻿
+
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -41,13 +41,18 @@
               '100%': { transform: 'translateX(0)', opacity: '1' },
             },
             'pulse-red': {
-              '0%, 100%': { borderColor: 'rgba(239, 68, 68, 1)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0.7)' },
-              '50%': { borderColor: 'rgba(248, 113, 113, 1)', boxShadow: '0 0 0 6px rgba(239, 68, 68, 0)' },
+              '0%, 100%': { borderColor: 'rgba(220, 38, 38, 1)', boxShadow: '0 0 0 0 rgba(220, 38, 38, 0.7)' },
+              '50%': { borderColor: 'rgba(239, 68, 68, 0.8)', boxShadow: '0 0 0 6px rgba(220, 38, 38, 0.1)' },
+            },
+            'flash': {
+               '0%, 100%': { opacity: '1' },
+               '50%': { opacity: '0.2' }
             }
           },
           animation: {
             'toast-in': 'toast-in 0.5s ease-out forwards',
             'pulse-red': 'pulse-red 2s infinite',
+            'flash': 'flash 1.5s infinite',
           }
         }
       }
@@ -350,7 +355,7 @@
     // ==========================================
 
     // --- DemandProgressModal (Detaylı Akış Penceresi) ---
-    const DemandProgressModal = ({ isOpen, onClose, demand, onAddProgressItems, onEditDemand, onCompleteDemand, onEditProgressItem, onRequestDeleteProgressItem }) => {
+    const DemandProgressModal = ({ isOpen, onClose, demand, onAddProgressItems, onEditDemand, onCompleteDemand, onEditProgressItem, onRequestDeleteProgressItem, onOpenEditModal }) => {
       const [newProgressText, setNewProgressText] = useState('');
       const [customDate, setCustomDate] = useState(toLocalISOString(new Date()));
       const [isReminder, setIsReminder] = useState(false);
@@ -371,6 +376,7 @@
       
       // Date Picker Logic State
       const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+      const [isReminderDatePickerOpen, setIsReminderDatePickerOpen] = useState(false);
 
       const supportPeople = ['Reyhan Hanım', 'Tuğba Hanım', 'Firuze Hanım', 'Serhat Bey'];
       const attachmentTypes = ['Talep Yazı', 'Teknik Şartname', 'Talep Formları', 'Diğer'];
@@ -381,6 +387,7 @@
             setIsReminder(false);
             setReminderDate('');
             setIsDatePickerOpen(false);
+            setIsReminderDatePickerOpen(false);
         }
       }, [isOpen]);
 
@@ -400,7 +407,7 @@
           const [year, month, day] = editingItem.date.split('-').map(Number);
           const newDate = new Date(year, month - 1, day, originalDate.getHours(), originalDate.getMinutes());
           
-          const updatedItem = { ...originalItem, description: editingItem.description, date: newDate.toISOString() };
+          const updatedItem = { ...originalItem, description: editingItem.description.toLocaleUpperCase('tr-TR'), date: newDate.toISOString() };
           onEditProgressItem(demand.id, editingItem.index, updatedItem, originalItem); // Pass original for logging
           setEditingItem(null);
       };
@@ -409,7 +416,7 @@
         const lines = text.trim().split('\n').filter(line => line.trim() !== '');
         return lines.map(line => ({ 
             date: new Date(dateOverride).toISOString(), 
-            description: line.trim(), 
+            description: line.trim().toLocaleUpperCase('tr-TR'), 
             isSupportNote: isSupport, 
             supportPerson: isSupport ? supportPerson : undefined,
             reminderDate: isReminder && reminderDate ? new Date(reminderDate).toISOString() : undefined,
@@ -434,7 +441,7 @@
               onAddProgressItems(demand.id, parsedItems);
               setNewProgressText(''); setIsSupportNote(false); setSelectedSupportPerson(''); 
               setHasDeliveredDocument(false); setDocumentName(''); setIsReminder(false);
-              setReminderDate(''); setCustomDate(toLocalISOString(new Date())); setIsDatePickerOpen(false);
+              setReminderDate(''); setCustomDate(toLocalISOString(new Date())); setIsDatePickerOpen(false); setIsReminderDatePickerOpen(false);
           }
         }
       };
@@ -449,7 +456,7 @@
                 return {
                     ...item,
                     reminderRead: true,
-                    description: `${item.description}\n\n(Hatırlatma okundu: ${readDateStr})`
+                    description: `${item.description}\n\n(Hatırlatma okundu: ${readDateStr})`.toLocaleUpperCase('tr-TR')
                 };
             }
             return item;
@@ -469,18 +476,18 @@
       const handleOgmCloudSave = () => {
         const now = new Date();
         const dateStr = `${now.getDate().toString().padStart(2,'0')}.${(now.getMonth()+1).toString().padStart(2,'0')}.${now.getFullYear()} ${now.getHours()}:${now.getMinutes()}`;
-        const newProgressItems = [{ date: now.toISOString(), description: `Talep ek oluşturma tarihi: ${dateStr}`, isSupportNote: false, }];
+        const newProgressItems = [{ date: now.toISOString(), description: `TALEP EK OLUŞTURMA TARİHİ: ${dateStr}`, isSupportNote: false, }];
         if (ogmCloudDidUpload) {
             let attachmentDesc = ogmCloudAttachmentType;
             if (ogmCloudAttachmentType === 'Diğer' && ogmCloudOtherAttachmentName.trim()) attachmentDesc = ogmCloudOtherAttachmentName.trim();
-            newProgressItems.push({ date: now.toISOString(), description: `Talep Eki Yüklendi: ${attachmentDesc}`, isSupportNote: false });
+            newProgressItems.push({ date: now.toISOString(), description: `TALEP EKİ YÜKLENDİ: ${attachmentDesc}`.toLocaleUpperCase('tr-TR'), isSupportNote: false });
         }
         onAddProgressItems(demand.id, newProgressItems);
         resetOgmCloudForm();
       };
 
       const handleStartCompletion = () => { setIsConfirmingCompletion(true); setCompletionDate(new Date().toISOString().split('T')[0]); };
-      const handleConfirmCompletion = () => { if (completionDate) onCompleteDemand(demand.id, completionDate, completionNote); };
+      const handleConfirmCompletion = () => { if (completionDate) onCompleteDemand(demand.id, completionDate, completionNote.toLocaleUpperCase('tr-TR')); };
       
       const handleExportSingleDemand = () => {
         const headers = ['TARİH', 'AÇIKLAMA', 'NOT TÜRÜ'];
@@ -496,7 +503,8 @@
       };
 
       const progressHistoryWithMeta = demand.progressHistory.map((item, index) => ({ ...item, originalIndex: index, isEditable: true }));
-      const timelineItems = [...progressHistoryWithMeta];
+      // Filter out system notes from display
+      const timelineItems = [...progressHistoryWithMeta].filter(item => !item.description.includes('(SİSTEM NOTU)'));
       if (demand.ebysDate !== 'N/A') timelineItems.push({ date: demand.ebysDate, description: 'Talep Oluşturuldu', isSupportNote: false, isEditable: false, originalIndex: -1 });
       const timeline = timelineItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -525,7 +533,7 @@
                  <button onClick={handleExportSingleDemand} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-semibold transition-colors border border-green-200">
                    <Icons.Download className="w-4 h-4" /> Excel
                  </button>
-                 <button onClick={(e) => { e.stopPropagation(); onEditDemand(demand); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Düzenle">
+                 <button onClick={(e) => { e.stopPropagation(); onOpenEditModal(demand); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Düzenle">
                   <Icons.Edit className="w-5 h-5" />
                 </button>
                 <button onClick={handleCloseModal} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Kapat">
@@ -582,7 +590,7 @@
                             
                             {editingItem && editingItem.index === item.originalIndex ? (
                               <div className="space-y-3">
-                                <textarea value={editingItem.description} onChange={(e) => setEditingItem(prev => prev ? {...prev, description: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" rows={3}/>
+                                <textarea value={editingItem.description} onChange={(e) => setEditingItem(prev => prev ? {...prev, description: e.target.value.toLocaleUpperCase('tr-TR')} : null)} className="w-full p-2 border rounded text-gray-900" rows={3}/>
                                 <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
                                 <div className="flex justify-end gap-2">
                                   <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-800 rounded text-xs">İptal</button>
@@ -597,7 +605,6 @@
                                     </span>
                                     {item.isEditable && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => handleStartEdit(item)} className="p-1 hover:bg-gray-200 rounded text-gray-500"><Icons.Edit className="w-3.5 h-3.5" /></button>
                                         <button onClick={() => onRequestDeleteProgressItem(demand.id, item.originalIndex, item.description)} className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded"><Icons.Trash className="w-3.5 h-3.5" /></button>
                                       </div>
                                     )}
@@ -622,7 +629,7 @@
                       <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2"><Icons.CheckCircle className="w-5 h-5"/> Tamamlama Onayı</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <input type="date" value={completionDate} onChange={(e) => setCompletionDate(e.target.value)} className="p-2 border rounded text-sm text-gray-900" required />
-                        <input type="text" value={completionNote} onChange={(e) => setCompletionNote(e.target.value)} className="p-2 border rounded text-sm text-gray-900" placeholder="Son not (isteğe bağlı)" />
+                        <input type="text" value={completionNote} onChange={(e) => setCompletionNote(e.target.value.toLocaleUpperCase('tr-TR'))} className="p-2 border rounded text-sm text-gray-900" placeholder="Son not (isteğe bağlı)" />
                       </div>
                       <div className="mt-3 flex justify-end gap-2">
                         <button onClick={() => setIsConfirmingCompletion(false)} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm">Vazgeç</button>
@@ -647,16 +654,15 @@
                           <div className="flex flex-wrap gap-3 items-center">
                               {/* Improved Date Picker UX */}
                               <div className="relative">
-                                  {isDatePickerOpen ? (
-                                     <div className="flex items-center gap-2 bg-white border border-blue-300 rounded px-2 py-1 shadow-sm">
-                                         <input type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="text-sm border-none p-0 text-gray-900 focus:ring-0 w-36" />
-                                         <button onClick={() => setIsDatePickerOpen(false)} className="px-2 py-0.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">Uygula</button>
+                                  <button onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
+                                      <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
+                                      <span className="text-xs font-medium text-gray-700 group-hover:text-blue-700">{customDateDisplay}</span>
+                                  </button>
+                                  {isDatePickerOpen && (
+                                     <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
+                                         <input type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                         <button onClick={() => setIsDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium">Uygula</button>
                                      </div>
-                                  ) : (
-                                     <button onClick={() => setIsDatePickerOpen(true)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
-                                         <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
-                                         <span className="text-xs font-medium text-gray-700 group-hover:text-blue-700">{customDateDisplay}</span>
-                                     </button>
                                   )}
                               </div>
                               
@@ -670,11 +676,6 @@
                                   <span className="text-xs font-bold uppercase">Hatırlatma</span>
                               </label>
                           </div>
-
-                          <div className="flex gap-2">
-                              <button onClick={handleStartOgmCloudFlow} className="text-xs flex items-center gap-1 text-gray-600 hover:text-blue-600 bg-white px-2 py-1 rounded border hover:border-blue-300"><Icons.ExternalLink className="w-3 h-3"/> OGM Bulut</button>
-                              <button onClick={() => window.open('https://bulut.ogm.gov.tr/TALEPGORME', '_blank', 'noopener,noreferrer')} className="text-xs flex items-center gap-1 text-gray-600 hover:text-blue-600 bg-white px-2 py-1 rounded border hover:border-blue-300"><Icons.ExternalLink className="w-3 h-3"/> Dosyalar</button>
-                          </div>
                        </div>
 
                        {/* Conditional Inputs */}
@@ -686,13 +687,26 @@
                                       {supportPeople.map(p => <option key={p} value={p}>{p}</option>)}
                                   </select>
                                   <label className="flex items-center gap-1 ml-2 text-gray-700 font-medium"><input type="checkbox" checked={hasDeliveredDocument} onChange={e => setHasDeliveredDocument(e.target.checked)} className="rounded text-orange-600"/> Evrak Teslim</label>
-                                  {hasDeliveredDocument && <input type="text" placeholder="Evrak Adı" value={documentName} onChange={e => setDocumentName(e.target.value)} className="border-gray-300 rounded text-xs py-1 px-2 text-gray-900 flex-grow" />}
+                                  {hasDeliveredDocument && <input type="text" placeholder="Evrak Adı" value={documentName} onChange={e => setDocumentName(e.target.value.toLocaleUpperCase('tr-TR'))} className="border-gray-300 rounded text-xs py-1 px-2 text-gray-900 flex-grow" />}
                               </div>
                            )}
                            {isReminder && (
                               <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-100 rounded text-sm animate-in fade-in slide-in-from-top-1">
                                    <span className="text-xs font-bold text-red-700 uppercase">Hatırlatma Zamanı:</span>
-                                   <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="border-red-200 rounded text-xs py-1 text-gray-900 focus:ring-red-500" />
+                                   <div className="relative">
+                                      <button onClick={() => setIsReminderDatePickerOpen(!isReminderDatePickerOpen)} className="flex items-center gap-2 bg-white border border-red-200 rounded px-3 py-1.5 hover:bg-red-50 transition-all group">
+                                          <Icons.Clock className="w-4 h-4 text-red-500" />
+                                          <span className="text-xs font-medium text-red-700">
+                                              {reminderDate ? new Date(reminderDate).toLocaleString('tr-TR', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute:'2-digit' }) : 'Tarih Seçiniz'}
+                                          </span>
+                                      </button>
+                                      {isReminderDatePickerOpen && (
+                                          <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
+                                              <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                              <button onClick={() => setIsReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium">Uygula</button>
+                                          </div>
+                                      )}
+                                  </div>
                               </div>
                            )}
                        </div>
@@ -701,18 +715,18 @@
                        <div className="flex gap-2 items-start">
                            <textarea 
                               value={newProgressText} 
-                              onChange={(e) => setNewProgressText(e.target.value)} 
+                              onChange={(e) => setNewProgressText(e.target.value.toLocaleUpperCase('tr-TR'))} 
                               rows={2} 
                               className="flex-grow rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm p-3 text-gray-900" 
                               placeholder="Akış notu giriniz..." 
                             />
                            <div className="flex flex-col gap-2 w-24 shrink-0">
-                               <button onClick={handlePreview} disabled={!newProgressText.trim() && !hasDeliveredDocument} className="w-full h-full bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                               <button onClick={handlePreview} disabled={!newProgressText.trim() && !hasDeliveredDocument} className="w-full py-1 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                    Ekle
                                </button>
                                {demand.status === DemandStatus.ISLEMDE && (
                                   <button onClick={handleStartCompletion} className="w-full py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-200 text-xs font-bold transition-colors">
-                                      TALEP TAMAMLANDI
+                                      Bitir
                                   </button>
                                )}
                            </div>
@@ -854,7 +868,7 @@
     };
 
     // --- KanbanCard ---
-    const KanbanCard = ({ demand, onEdit, onShowProgress, onRequestDelete, isProcessing }) => {
+    const KanbanCard = ({ demand, onEdit, onShowProgress, onRequestDelete, isProcessing, currentTime }) => {
       const priorityStyles = {
         [DemandPriority.YUKSEK]: { bg: 'bg-red-100', text: 'text-red-700' },
         [DemandPriority.ORTA]: { bg: 'bg-orange-100', text: 'text-orange-700' },
@@ -871,15 +885,16 @@
       const handleEditClick = (e) => { e.stopPropagation(); onEdit(demand); };
       const handleDeleteClick = (e) => { e.stopPropagation(); onRequestDelete(demand.id); };
 
+      // Ensure date comparison works correctly using the passed currentTime prop
       const hasActiveReminder = demand.progressHistory.some(
-          item => item.reminderDate && new Date(item.reminderDate) <= new Date() && !item.reminderRead
+          item => item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead
       );
 
       return (
         <div className={`relative bg-white rounded-lg shadow-sm p-4 mb-4 border hover:shadow-lg transition-all duration-200 flex flex-col cursor-pointer ${hasActiveReminder ? 'border-red-500 animate-pulse-red' : 'border-gray-200'}`} onDoubleClick={() => onShowProgress(demand)}>
           {hasActiveReminder && (
-              <div className="absolute -top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow z-10 animate-bounce">
-                  HATIRLATMA NOTU
+              <div className="absolute -top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow z-10 animate-flash">
+                  HATIRLATMA
               </div>
           )}
           <div className="flex justify-between items-start mb-2">
@@ -916,7 +931,7 @@
     };
 
     // --- KanbanColumn ---
-    const KanbanColumn = ({ status, demands, onEdit, onShowProgress, onRequestDelete, processingDemands }) => {
+    const KanbanColumn = ({ status, demands, onEdit, onShowProgress, onRequestDelete, processingDemands, currentTime }) => {
       const statusStyles = {
         [DemandStatus.YENI]: { border: 'border-blue-500', text: 'text-blue-600' },
         [DemandStatus.ISLEMDE]: { border: 'border-orange-500', text: 'text-orange-600' },
@@ -934,7 +949,7 @@
             </h3>
           </div>
           <div className="flex-grow">
-            {demands.map(demand => <KanbanCard key={demand.id} demand={demand} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} isProcessing={processingDemands.has(demand.id)} />)}
+            {demands.map(demand => <KanbanCard key={demand.id} demand={demand} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} isProcessing={processingDemands.has(demand.id)} currentTime={currentTime} />)}
             {demands.length === 0 && (
               <div className="flex items-center justify-center h-full text-center text-sm text-gray-500 py-10">
                 <div className="bg-white/50 p-8 rounded-lg border-2 border-dashed border-gray-300">Bu bölümde talep bulunmuyor.</div>
@@ -946,10 +961,10 @@
     };
 
     // --- KanbanBoard ---
-    const KanbanBoard = ({ demands, onEdit, activeStatus, onShowProgress, onRequestDelete, processingDemands }) => (
+    const KanbanBoard = ({ demands, onEdit, activeStatus, onShowProgress, onRequestDelete, processingDemands, currentTime }) => (
       <div className="px-4 sm:px-6 md:px-8 pb-8 pt-4">
         <div className="w-full">
-          <KanbanColumn key={activeStatus} status={activeStatus} demands={demands} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} processingDemands={processingDemands} />
+          <KanbanColumn key={activeStatus} status={activeStatus} demands={demands} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} processingDemands={processingDemands} currentTime={currentTime} />
         </div>
       </div>
     );
@@ -1066,6 +1081,8 @@
       const [selectedDemandForProgress, setSelectedDemandForProgress] = useState(null);
       const [deletionTarget, setDeletionTarget] = useState(null);
       const [toast, setToast] = useState(null);
+      // Global Time state for driving updates
+      const [currentTime, setCurrentTime] = useState(new Date());
       
       // Rapor Modal State'leri
       const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -1080,6 +1097,14 @@
       if (!SCRIPT_URL) {
           console.error("Google Apps Script URL'si HTML meta etiketinde bulunamadı.");
       }
+
+      // Time ticker effect to force re-renders and re-sorts for reminders
+      useEffect(() => {
+          const timer = setInterval(() => {
+              setCurrentTime(new Date());
+          }, 30000); // Check every 30 seconds
+          return () => clearInterval(timer);
+      }, []);
 
       const callApi = async (action, payload) => {
         if (!SCRIPT_URL) throw new Error("API URL bulunamadı");
@@ -1221,6 +1246,8 @@
         setDemands(prev => prev.map(d => d.id === updatedDemand.id ? updatedDemand : d));
         api.saveDemand(updatedDemand).catch(err => console.error("Okuma durumu kaydedilemedi", err));
       };
+      
+      const handleRequestEditFromProgress = (demand) => { handleCloseProgressModal(); handleOpenEditModal(demand); };
 
       const handleAddProgressItems = (demandId, newItems) => {
         updateDemandProgress( demandId, d => {
@@ -1232,7 +1259,8 @@
       const handleCompleteDemand = (demandId, completionDate, completionNote) => {
         updateDemandProgress( demandId, d => {
             const [year, month, day] = completionDate.split('-').map(Number);
-            const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+            // Use local time construction to avoid UTC offsets pushing it to the next day in some timezones
+            const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
             const finalNote = completionNote.trim() || 'Akış notu düzeltilir';
             return { ...d, status: DemandStatus.TAMAMLANDI, progressHistory: [...d.progressHistory, { date: endOfDay.toISOString(), description: finalNote, isSupportNote: false, isCompletionNote: true }] };
           }, 'Talep tamamlandı.', 'Talep tamamlanamadı.'
@@ -1257,7 +1285,6 @@
         );
       };
 
-      const handleRequestEditFromProgress = (demand) => { handleCloseProgressModal(); handleOpenEditModal(demand); };
       const handleUploadClick = () => fileInputRef.current?.click();
       
       const handleFileChange = (event) => {
@@ -1293,8 +1320,8 @@
                     const normalizeTypeString = (str) => str.toUpperCase().replace(/[\s()]/g, '');
                     const type = Object.values(DemandType).find(t => normalizeTypeString(t) === normalizeTypeString(talepTuru)) || DemandType.MALZEME;
                     const progressHistory = []; const baseDate = new Date(); let dateOffset = 0;
-                    if (akisNotu) akisNotu.split('\n').reverse().forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim(), isSupportNote: false }); });
-                    if (destekNotu) { const supportPerson = supportPersonMap[destekPersonelKisaltma] || destekPersonelKisaltma || 'Belirtilmemiş'; destekNotu.split('\n').forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim(), isSupportNote: true, supportPerson }); }); }
+                    if (akisNotu) akisNotu.split('\n').reverse().forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim().toLocaleUpperCase('tr-TR'), isSupportNote: false }); });
+                    if (destekNotu) { const supportPerson = supportPersonMap[destekPersonelKisaltma] || destekPersonelKisaltma || 'Belirtilmemiş'; destekNotu.split('\n').forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim().toLocaleUpperCase('tr-TR'), isSupportNote: true, supportPerson }); }); }
                     const status = index < 102 ? DemandStatus.TAMAMLANDI : DemandStatus.ISLEMDE;
                     return { id: Date.now() + index, title: baslik, description: aciklama, requestingUnit, type, status, priority: DemandPriority.ORTA, createdAt, ebysNumber: ebysNo, ebysDate, progressHistory, attachments: [] };
                 });
@@ -1313,7 +1340,7 @@
       
       const hasActiveReminder = (d) => {
           return d.progressHistory.some(item => 
-            item.reminderDate && new Date(item.reminderDate) <= new Date() && !item.reminderRead
+            item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead
           );
       };
 
@@ -1350,11 +1377,16 @@
       };
 
       // EXCEL EXPORT HELPERS (HTML BASED FOR STYLING)
-      const exportToExcelHTML = (filename, rows) => {
+      const exportToExcelHTML = (filename, rows, titleRow = null) => {
             let html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
             html += '<head><meta http-equiv="content-type" content="text/plain; charset=UTF-8"/></head><body>';
             html += '<table border="1" style="border-collapse: collapse; width: 100%;">';
             
+            // Add Special Title Row if exists
+            if (titleRow) {
+                html += `<thead><tr><th colspan="${rows[0].length}" style="background-color: #FFFFFF; color: #000000; border: 1px solid #000000; font-weight: bold; text-align: center; font-size: 14px; height: 50px;">${titleRow}</th></tr></thead>`;
+            }
+
             // Add Header
             html += '<thead><tr>';
             rows[0].forEach(header => {
@@ -1365,8 +1397,22 @@
             // Add Data
             rows.slice(1).forEach(row => {
                 html += '<tr>';
-                row.forEach(cell => {
-                    html += `<td style="border: 1px solid #000000; padding: 5px; vertical-align: top;">${cell || ''}</td>`;
+                row.forEach((cell, index) => {
+                    // 0:Sıra, 1:Başlık, 2:Birim, 3:Tür, 4:EbysNo, 5:Tarih, 6:Notlar
+                    // Requirements:
+                    // 1: A(0), C(2), D(3), E(4), F(5) -> Center Center
+                    // 2: B(1), G(6) -> Center Left
+                    let style = "border: 1px solid #000000; padding: 5px; vertical-align: middle;";
+                    if ([0, 2, 3, 4, 5].includes(index)) { 
+                        style += " text-align: center;";
+                    } else {
+                        style += " text-align: left;";
+                    }
+                    // Handle multiline flow notes
+                    if (index === 6) {
+                        style += " white-space: pre-wrap;"; 
+                    }
+                    html += `<td style="${style}">${cell || ''}</td>`;
                 });
                 html += '</tr>';
             });
@@ -1384,16 +1430,37 @@
       const handleExportToExcel = () => {
         if (demandsForBoard.length === 0) { alert('Veri yok.'); return; }
         
-        const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AKIŞ NOTLARI', 'DESTEK HİZMETLERİ NOTU'];
+        // Remove Destek Notu column, add Sira No
+        // Columns: 0:SIRA, 1:BAŞLIK, 2:BİRİM, 3:TÜR, 4:EBYS, 5:TARİH, 6:NOTLAR
+        const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AKIŞ NOTLARI'];
         
         const data = demandsForBoard.map((d, index) => {
-          const akisNotlari = d.progressHistory.filter(p => !p.isSupportNote).map(p => `${new Date(p.date).toLocaleDateString('tr-TR')}: ${p.description}`).join('\n');
-          const destekNotlari = d.progressHistory.filter(p => p.isSupportNote).map(p => `${new Date(p.date).toLocaleDateString('tr-TR')} (${p.supportPerson || 'Belirtilmemiş'}): ${p.description}`).join('\n');
+          // Combine all notes into one column (Flow + Support), Uppercase, Newline separated
+          // Filter out system notes
+          const allNotes = d.progressHistory
+            .filter(p => !p.description.includes('(SİSTEM NOTU)'))
+            .map(p => {
+                const date = new Date(p.date).toLocaleDateString('tr-TR');
+                let desc = p.description.toLocaleUpperCase('tr-TR'); // Force Uppercase
+                if (p.isSupportNote) {
+                    desc = `(DESTEK: ${p.supportPerson ? p.supportPerson.toLocaleUpperCase('tr-TR') : 'BELIRSIZ'}) ${desc}`;
+                }
+                // Format: DATE: NOTE
+                return `${date}: ${desc}`;
+            })
+            // Use HTML break for Excel to respect newlines in HTML-based export
+            .join('<br style="mso-data-placement:same-cell;" />'); 
+
           const ebysTarihi = d.ebysDate === 'N/A' ? 'N/A' : new Date(d.ebysDate).toLocaleDateString('tr-TR');
-          return [index + 1, d.title, d.requestingUnit, d.type, d.ebysNumber, ebysTarihi, akisNotlari, destekNotlari];
+          return [index + 1, d.title, d.requestingUnit, d.type, d.ebysNumber, ebysTarihi, allNotes];
         });
 
-        exportToExcelHTML(`talepler_${activeStatus}.xls`, [headers, ...data]);
+        let titleRow = null;
+        if (activeStatus === DemandStatus.ISLEMDE) {
+            titleRow = 'HAVA ARAÇLARI BAKIM VE TEKNİK ŞUBE MÜDÜRLÜĞÜ TARAFINDAN DESTEK HİZMETLERİ ŞUBE MÜDÜRLÜĞÜNE YAZI İLE İLETİLEN FAKAT <span style="color:red;">HENÜZ TAMAMLANAMAYAN</span> TALEPLER';
+        }
+
+        exportToExcelHTML(`talepler_${activeStatus}.xls`, [headers, ...data], titleRow);
       };
       
       const handleGenerateFlowReport = () => {
@@ -1407,9 +1474,10 @@
           const end = new Date(reportEndDate);
           end.setHours(23,59,59,999);
           
-          const reportRows = [['TALEP BAŞLIĞI', 'OLAY TARİHİ', 'OLAY TÜRÜ', 'AÇIKLAMA']];
+          const reportRows = [['SIRA NO', 'TALEP BAŞLIĞI', 'OLAY TARİHİ', 'OLAY TÜRÜ', 'AÇIKLAMA']];
           
           let hasData = false;
+          let counter = 1;
 
           demands.forEach(d => {
               // 1. Yeni Talep (Cümle Formatı)
@@ -1417,7 +1485,7 @@
               if (created >= start && created <= end) {
                   const dateStr = created.toLocaleString('tr-TR');
                   const sentence = `${d.title} konulu yeni bir iş talebi, ${d.requestingUnit} birimi tarafından oluşturulmuştur.`;
-                  reportRows.push([d.title, dateStr, 'Talep Açıldı', sentence]);
+                  reportRows.push([counter++, d.title, dateStr, 'Talep Açıldı', sentence]);
                   hasData = true;
               }
               
@@ -1428,8 +1496,11 @@
                       const compDate = new Date(compItem.date);
                       if (compDate >= start && compDate <= end) {
                           const dateStr = compDate.toLocaleString('tr-TR');
-                          const sentence = `${d.title} konulu iş tamamlanmış ve kapatılmıştır.`;
-                          reportRows.push([d.title, dateStr, 'Talep Kapatıldı', sentence]);
+                          // Güncellenen kısım: Kapanış notunu da ekle
+                          const noteContent = compItem.description ? ` (${compItem.description.toLocaleUpperCase('tr-TR')})` : "";
+                          const sentence = `${d.title} konulu iş tamamlanmış ve kapatılmıştır.${noteContent}`;
+                          // Güncellenen kısım: Etiket 'Talep Tamamlandı'
+                          reportRows.push([counter++, d.title, dateStr, 'Talep Tamamlandı', sentence]);
                           hasData = true;
                       }
                   }
@@ -1438,7 +1509,8 @@
               // 3. Akış Notları (Cümle Formatı) - Includes all types now
               const relevantProgress = d.progressHistory.filter(i => {
                   const itemDate = new Date(i.date);
-                  return !i.isCompletionNote && itemDate >= start && itemDate <= end;
+                  // Hide System Notes in Flow Report too
+                  return !i.isCompletionNote && !i.description.includes('(SİSTEM NOTU)') && itemDate >= start && itemDate <= end;
               });
               
               if (relevantProgress.length > 0) {
@@ -1446,21 +1518,19 @@
                       const dateStr = new Date(i.date).toLocaleString('tr-TR');
                       let sentence = '';
                       let type = 'Akış Notu';
+                      const desc = i.description.toLocaleUpperCase('tr-TR');
                       
                       // Check for specific markers or flags
-                      if (i.description.includes('Hatırlatma okundu')) {
+                      if (desc.includes('HATIRLATMA OKUNDU')) {
                           type = 'Hatırlatma Okundu';
-                          sentence = `${d.title} işi için hatırlatma okundu bilgisi kaydedildi: "${i.description}"`;
-                      } else if (i.description.includes('(SİSTEM NOTU)')) {
-                          type = 'Sistem Kaydı (Düzenleme/Silme)';
-                          sentence = `${d.title} işi için sistem kaydı: "${i.description}"`;
+                          sentence = `${d.title} işi için hatırlatma okundu bilgisi kaydedildi: "${desc}"`;
                       } else if (i.isSupportNote) {
                           type = 'Destek Notu';
-                          sentence = `${d.title} işi için ${i.supportPerson || 'destek personeli'} tarafından şu not eklendi: "${i.description}"`;
+                          sentence = `${d.title} işi için ${i.supportPerson || 'destek personeli'} tarafından şu not eklendi: "${desc}"`;
                       } else {
-                          sentence = `${d.title} işi için şu akış notu eklendi: "${i.description}"`;
+                          sentence = `${d.title} işi için şu akış notu eklendi: "${desc}"`;
                       }
-                      reportRows.push([d.title, dateStr, type, sentence]);
+                      reportRows.push([counter++, d.title, dateStr, type, sentence]);
                   });
                   hasData = true;
               }
@@ -1505,7 +1575,7 @@
                          {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200">Hata: {error}</div>}
                          
                          {!error && (
-                            <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} />
+                            <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} currentTime={currentTime} />
                          )}
                     </div>
                 </main>
@@ -1520,6 +1590,7 @@
                     onCompleteDemand={handleCompleteDemand} 
                     onEditProgressItem={handleEditProgressItem} 
                     onRequestDeleteProgressItem={requestProgressItemDeletion} 
+                    onOpenEditModal={handleRequestEditFromProgress}
                 />
                 <ConfirmationModal isOpen={!!deletionTarget} onClose={handleCancelDeletion} onConfirm={handleConfirmDeletion} title="Silme Onayı" message="Bu öğeyi silmek istediğinizden emin misiniz? (Silinen öğeler sistem kaydı olarak saklanacaktır)." />
                 
