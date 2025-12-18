@@ -704,12 +704,6 @@
                                      </div>
                                   )}
                               </div>
-                              
-                              <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer border transition-colors ${isSupportNote ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-600'}`}>
-                                  <input type="checkbox" checked={isSupportNote} onChange={e => setIsSupportNote(e.target.checked)} className="rounded text-orange-600 focus:ring-orange-500"/>
-                                  <span className="text-xs font-bold uppercase">Destek</span>
-                              </label>
-
                               <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer border transition-colors ${isReminder ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600'}`}>
                                   <input type="checkbox" checked={isReminder} onChange={e => setIsReminder(e.target.checked)} className="rounded text-red-600 focus:ring-red-500"/>
                                   <span className="text-xs font-bold uppercase">Hatırlatma</span>
