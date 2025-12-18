@@ -377,6 +377,7 @@
       // Date Picker Logic State
       const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       const [isReminderDatePickerOpen, setIsReminderDatePickerOpen] = useState(false);
+      const [isEditReminderDatePickerOpen, setIsEditReminderDatePickerOpen] = useState(false);
 
       const supportPeople = ['Reyhan Hanım', 'Tuğba Hanım', 'Firuze Hanım', 'Serhat Bey'];
       const attachmentTypes = ['Talep Yazı', 'Teknik Şartname', 'Talep Formları', 'Diğer'];
@@ -388,13 +389,20 @@
             setReminderDate('');
             setIsDatePickerOpen(false);
             setIsReminderDatePickerOpen(false);
+            setIsEditReminderDatePickerOpen(false);
         }
       }, [isOpen]);
 
       if (!isOpen || !demand) return null;
 
       const handleStartEdit = (item) => {
-        setEditingItem({ index: item.originalIndex, description: item.description, date: item.date.split('T')[0] });
+        setEditingItem({ 
+            index: item.originalIndex, 
+            description: item.description, 
+            date: item.date.split('T')[0],
+            isReminder: !!item.reminderDate,
+            reminderDate: item.reminderDate ? item.reminderDate.slice(0, 16) : ''
+        });
       };
 
       const handleCancelEdit = () => setEditingItem(null);
@@ -407,7 +415,13 @@
           const [year, month, day] = editingItem.date.split('-').map(Number);
           const newDate = new Date(year, month - 1, day, originalDate.getHours(), originalDate.getMinutes());
           
-          const updatedItem = { ...originalItem, description: editingItem.description.toLocaleUpperCase('tr-TR'), date: newDate.toISOString() };
+          const updatedItem = { 
+              ...originalItem, 
+              description: editingItem.description.toLocaleUpperCase('tr-TR'), 
+              date: newDate.toISOString(),
+              reminderDate: editingItem.isReminder && editingItem.reminderDate ? new Date(editingItem.reminderDate).toISOString() : undefined,
+              reminderRead: editingItem.isReminder ? (editingItem.reminderDate === originalItem.reminderDate ? originalItem.reminderRead : false) : false
+          };
           onEditProgressItem(demand.id, editingItem.index, updatedItem, originalItem); // Pass original for logging
           setEditingItem(null);
       };
@@ -591,7 +605,31 @@
                             {editingItem && editingItem.index === item.originalIndex ? (
                               <div className="space-y-3">
                                 <textarea value={editingItem.description} onChange={(e) => setEditingItem(prev => prev ? {...prev, description: e.target.value.toLocaleUpperCase('tr-TR')} : null)} className="w-full p-2 border rounded text-gray-900" rows={3}/>
-                                <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
+                                    <div className="flex flex-col gap-2">
+                                        <label className="flex items-center gap-2 text-xs font-bold text-gray-600">
+                                            <input type="checkbox" checked={editingItem.isReminder} onChange={e => setEditingItem(prev => prev ? {...prev, isReminder: e.target.checked} : null)} className="rounded" />
+                                            HATIRLATMA DÜZENLE
+                                        </label>
+                                        {editingItem.isReminder && (
+                                            <div className="relative">
+                                                <button onClick={() => setIsEditReminderDatePickerOpen(!isEditReminderDatePickerOpen)} className="w-full flex items-center gap-2 bg-white border border-red-200 rounded px-3 py-1.5 hover:bg-red-50 transition-all">
+                                                    <Icons.Clock className="w-4 h-4 text-red-500" />
+                                                    <span className="text-xs font-medium text-red-700">
+                                                        {editingItem.reminderDate ? new Date(editingItem.reminderDate).toLocaleString('tr-TR', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute:'2-digit' }) : 'Tarih Seçiniz'}
+                                                    </span>
+                                                </button>
+                                                {isEditReminderDatePickerOpen && (
+                                                    <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
+                                                        <input type="datetime-local" value={editingItem.reminderDate} onChange={(e) => setEditingItem(prev => prev ? {...prev, reminderDate: e.target.value} : null)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                                        <button onClick={() => setIsEditReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium">Uygula</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                                 <div className="flex justify-end gap-2">
                                   <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-800 rounded text-xs">İptal</button>
                                   <button onClick={handleSaveEdit} className="px-3 py-1 bg-blue-600 text-white rounded text-xs">Kaydet</button>
@@ -605,6 +643,7 @@
                                     </span>
                                     {item.isEditable && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => handleStartEdit(item)} className="p-1 hover:bg-gray-200 rounded text-gray-500" title="Notu Düzenle"><Icons.Edit className="w-3.5 h-3.5" /></button>
                                         <button onClick={() => onRequestDeleteProgressItem(demand.id, item.originalIndex, item.description)} className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded"><Icons.Trash className="w-3.5 h-3.5" /></button>
                                       </div>
                                     )}
@@ -868,7 +907,7 @@
     };
 
     // --- KanbanCard ---
-    const KanbanCard = ({ demand, onEdit, onShowProgress, onRequestDelete, isProcessing, currentTime }) => {
+    const KanbanCard = ({ demand, onEdit, onShowProgress, onRequestDelete, isProcessing, currentTime, sequenceNumber }) => {
       const priorityStyles = {
         [DemandPriority.YUKSEK]: { bg: 'bg-red-100', text: 'text-red-700' },
         [DemandPriority.ORTA]: { bg: 'bg-orange-100', text: 'text-orange-700' },
@@ -898,7 +937,10 @@
               </div>
           )}
           <div className="flex justify-between items-start mb-2">
-            <span className={`text-xs font-semibold px-2.5 py-0.5 rounded ${tStyle}`}>{demand.type}</span>
+            <div className="flex items-center gap-2">
+              <span className="bg-gray-800 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-sm">{sequenceNumber}</span>
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded ${tStyle}`}>{demand.type}</span>
+            </div>
             <div className="flex space-x-2 flex-shrink-0">
               <button onClick={handleEditClick} className="text-gray-400 hover:text-blue-600 transition-colors" title="Düzenle"><Icons.Edit className="w-4 h-4" /></button>
               <button onClick={handleDeleteClick} className="text-gray-400 hover:text-red-500 transition-colors" title="Sil"><Icons.Trash className="w-4 h-4" /></button>
@@ -949,7 +991,7 @@
             </h3>
           </div>
           <div className="flex-grow">
-            {demands.map(demand => <KanbanCard key={demand.id} demand={demand} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} isProcessing={processingDemands.has(demand.id)} currentTime={currentTime} />)}
+            {demands.map((demand, idx) => <KanbanCard key={demand.id} demand={demand} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} isProcessing={processingDemands.has(demand.id)} currentTime={currentTime} sequenceNumber={idx + 1} />)}
             {demands.length === 0 && (
               <div className="flex items-center justify-center h-full text-center text-sm text-gray-500 py-10">
                 <div className="bg-white/50 p-8 rounded-lg border-2 border-dashed border-gray-300">Bu bölümde talep bulunmuyor.</div>
@@ -1380,17 +1422,17 @@
       const exportToExcelHTML = (filename, rows, titleRow = null) => {
             let html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
             html += '<head><meta http-equiv="content-type" content="text/plain; charset=UTF-8"/></head><body>';
-            html += '<table border="1" style="border-collapse: collapse; width: 100%;">';
+            html += '<table border="1" style="border-collapse: collapse; width: 100%; font-family: Calibri;">';
             
             // Add Special Title Row if exists
             if (titleRow) {
-                html += `<thead><tr><th colspan="${rows[0].length}" style="background-color: #FFFFFF; color: #000000; border: 1px solid #000000; font-weight: bold; text-align: center; font-size: 14px; height: 50px;">${titleRow}</th></tr></thead>`;
+                html += `<thead><tr><th colspan="${rows[0].length}" style="background-color: #FFFFFF; color: #000000; border: 1px solid #000000; font-weight: bold; text-align: center; font-size: 11pt; height: 50px;">${titleRow}</th></tr></thead>`;
             }
 
             // Add Header
             html += '<thead><tr>';
             rows[0].forEach(header => {
-                html += `<th style="background-color: #C6E0B4; color: #000000; border: 1px solid #000000; font-weight: bold; padding: 10px; text-align: center;">${header}</th>`;
+                html += `<th style="background-color: #C6E0B4; color: #000000; border: 1px solid #000000; font-weight: bold; padding: 10px; text-align: center; font-size: 11pt;">${header}</th>`;
             });
             html += '</tr></thead><tbody>';
             
@@ -1398,17 +1440,12 @@
             rows.slice(1).forEach(row => {
                 html += '<tr>';
                 row.forEach((cell, index) => {
-                    // 0:Sıra, 1:Başlık, 2:Birim, 3:Tür, 4:EbysNo, 5:Tarih, 6:Notlar
-                    // Requirements:
-                    // 1: A(0), C(2), D(3), E(4), F(5) -> Center Center
-                    // 2: B(1), G(6) -> Center Left
                     let style = "border: 1px solid #000000; padding: 5px; vertical-align: middle;";
                     if ([0, 2, 3, 4, 5].includes(index)) { 
                         style += " text-align: center;";
                     } else {
                         style += " text-align: left;";
                     }
-                    // Handle multiline flow notes
                     if (index === 6) {
                         style += " white-space: pre-wrap;"; 
                     }
@@ -1430,13 +1467,16 @@
       const handleExportToExcel = () => {
         if (demandsForBoard.length === 0) { alert('Veri yok.'); return; }
         
-        // Remove Destek Notu column, add Sira No
-        // Columns: 0:SIRA, 1:BAŞLIK, 2:BİRİM, 3:TÜR, 4:EBYS, 5:TARİH, 6:NOTLAR
+        // Sort by EBYS Date before export
+        const sortedForExcel = [...demandsForBoard].sort((a, b) => {
+            const dateA = a.ebysDate === 'N/A' ? 0 : new Date(a.ebysDate).getTime();
+            const dateB = b.ebysDate === 'N/A' ? 0 : new Date(b.ebysDate).getTime();
+            return dateA - dateB;
+        });
+
         const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AKIŞ NOTLARI'];
         
-        const data = demandsForBoard.map((d, index) => {
-          // Combine all notes into one column (Flow + Support), Uppercase, Newline separated
-          // Filter out system notes
+        const data = sortedForExcel.map((d, index) => {
           const allNotes = d.progressHistory
             .filter(p => !p.description.includes('(SİSTEM NOTU)'))
             .map(p => {
@@ -1445,10 +1485,8 @@
                 if (p.isSupportNote) {
                     desc = `(DESTEK: ${p.supportPerson ? p.supportPerson.toLocaleUpperCase('tr-TR') : 'BELIRSIZ'}) ${desc}`;
                 }
-                // Format: DATE: NOTE
                 return `${date}: ${desc}`;
             })
-            // Use HTML break for Excel to respect newlines in HTML-based export
             .join('<br style="mso-data-placement:same-cell;" />'); 
 
           const ebysTarihi = d.ebysDate === 'N/A' ? 'N/A' : new Date(d.ebysDate).toLocaleDateString('tr-TR');
@@ -1458,6 +1496,8 @@
         let titleRow = null;
         if (activeStatus === DemandStatus.ISLEMDE) {
             titleRow = 'HAVA ARAÇLARI BAKIM VE TEKNİK ŞUBE MÜDÜRLÜĞÜ TARAFINDAN DESTEK HİZMETLERİ ŞUBE MÜDÜRLÜĞÜNE YAZI İLE İLETİLEN FAKAT <span style="color:red;">HENÜZ TAMAMLANAMAYAN</span> TALEPLER';
+        } else if (activeStatus === DemandStatus.TAMAMLANDI) {
+            titleRow = 'HAVA ARAÇLARI BAKIM VE TEKNİK ŞUBE MÜDÜRLÜĞÜ TARAFINDAN DESTEK HİZMETLERİ ŞUBE MÜDÜRLÜĞÜNE YAZI İLE İLETİLEN <span style="color:green;">TAMAMLANAN</span> TALEPLER';
         }
 
         exportToExcelHTML(`talepler_${activeStatus}.xls`, [headers, ...data], titleRow);
@@ -1480,7 +1520,6 @@
           let counter = 1;
 
           demands.forEach(d => {
-              // 1. Yeni Talep (Cümle Formatı)
               const created = new Date(d.createdAt);
               if (created >= start && created <= end) {
                   const dateStr = created.toLocaleString('tr-TR');
@@ -1489,27 +1528,22 @@
                   hasData = true;
               }
               
-              // 2. Kapanış (Cümle Formatı)
               if (d.status === DemandStatus.TAMAMLANDI) {
                   const compItem = d.progressHistory.find(i => i.isCompletionNote);
                   if (compItem) {
                       const compDate = new Date(compItem.date);
                       if (compDate >= start && compDate <= end) {
                           const dateStr = compDate.toLocaleString('tr-TR');
-                          // Güncellenen kısım: Kapanış notunu da ekle
                           const noteContent = compItem.description ? ` (${compItem.description.toLocaleUpperCase('tr-TR')})` : "";
                           const sentence = `${d.title} konulu iş tamamlanmış ve kapatılmıştır.${noteContent}`;
-                          // Güncellenen kısım: Etiket 'Talep Tamamlandı'
                           reportRows.push([counter++, d.title, dateStr, 'Talep Tamamlandı', sentence]);
                           hasData = true;
                       }
                   }
               }
 
-              // 3. Akış Notları (Cümle Formatı) - Includes all types now
               const relevantProgress = d.progressHistory.filter(i => {
                   const itemDate = new Date(i.date);
-                  // Hide System Notes in Flow Report too
                   return !i.isCompletionNote && !i.description.includes('(SİSTEM NOTU)') && itemDate >= start && itemDate <= end;
               });
               
@@ -1520,7 +1554,6 @@
                       let type = 'Akış Notu';
                       const desc = i.description.toLocaleUpperCase('tr-TR');
                       
-                      // Check for specific markers or flags
                       if (desc.includes('HATIRLATMA OKUNDU')) {
                           type = 'Hatırlatma Okundu';
                           sentence = `${d.title} işi için hatırlatma okundu bilgisi kaydedildi: "${desc}"`;
@@ -1541,7 +1574,11 @@
               return;
           }
 
-          exportToExcelHTML(`akis_raporu_${reportStartDate}_${reportEndDate}.xls`, reportRows);
+          const startStr = new Date(reportStartDate).toLocaleDateString('tr-TR');
+          const endStr = new Date(reportEndDate).toLocaleDateString('tr-TR');
+          const title = `${startStr} - ${endStr} AKIŞ RAPORU`;
+
+          exportToExcelHTML(`akis_raporu_${reportStartDate}_${reportEndDate}.xls`, reportRows, title);
           setIsReportModalOpen(false);
       };
       
