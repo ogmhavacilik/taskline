@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -36,10 +35,8 @@
             'brand-dark': '#111827'
           },
           keyframes: {
-            'toast-in': {
-              '0%': { transform: 'translateX(100%)', opacity: '0' },
-              '100%': { transform: 'translateX(0)', opacity: '1' },
-            },
+            'toast-in': { transform: 'translateX(100%)', opacity: '0' },
+            'toast-in-100': { transform: 'translateX(0)', opacity: '1' },
             'pulse-red': {
               '0%, 100%': { borderColor: 'rgba(220, 38, 38, 1)', boxShadow: '0 0 0 0 rgba(220, 38, 38, 0.7)' },
               '50%': { borderColor: 'rgba(239, 68, 68, 0.8)', boxShadow: '0 0 0 6px rgba(220, 38, 38, 0.1)' },
@@ -86,6 +83,10 @@
         /* Sayfa taşmasını engelle */
         overflow-x: hidden; 
         background-color: #1A4D2E; /* Ensure brand-bg covers everything */
+    }
+
+    body.modal-open {
+      overflow: hidden !important;
     }
     
     #root {
@@ -227,6 +228,11 @@
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
          </svg>
       ),
+      ClipboardList: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m.75-12h1.5a2.25 2.25 0 0 1 2.25 2.25v13.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V8.25A2.25 2.25 0 0 1 3 6h1.5m10.125-3h-4.5a.375.375 0 0 0-.375.375V4.5c0 .207.168.375.375.375h4.5a.375.375 0 0 0 .375-.375V3.375a.375.375 0 0 0-.375-.375Z" />
+        </svg>
+      )
     };
 
     // ==========================================
@@ -273,7 +279,7 @@
       return (
         <div className={`fixed bottom-5 right-5 z-[100] flex items-center p-4 rounded-lg text-white shadow-lg ${bgColor} animate-toast-in`}>
           <Icon className="w-6 h-6 mr-3" />
-          <span className="font-semibold">{message}</span>
+          <span className="font-semibold uppercase">{message}</span>
         </div>
       );
     };
@@ -283,16 +289,16 @@
       if (!isOpen) return null;
       return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-[70] flex justify-center items-center p-4" onClick={onClose}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md relative font-serif text-gray-900" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-md relative font-serif text-gray-900" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex justify-between items-start">
-                <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+                <h2 className="text-xl font-semibold text-gray-900 uppercase">{title}</h2>
                 <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icons.X className="w-6 h-6" /></button>
               </div>
-              <p className="mt-4 text-gray-600">{message}</p>
+              <p className="mt-4 text-gray-600 uppercase font-black">{message}</p>
               <div className="flex justify-end pt-6 border-t border-gray-200 space-x-3 mt-6">
-                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">İptal</button>
-                <button type="button" onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors">Sil</button>
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors uppercase font-bold tracking-tighter">İptal</button>
+                <button type="button" onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors uppercase font-bold tracking-tighter">Sil</button>
               </div>
             </div>
           </div>
@@ -323,7 +329,7 @@
         <div className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex justify-center items-center p-4" onClick={onClose}>
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col font-serif text-gray-900" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Ekli Dokümanlar</h2>
+              <h2 className="text-xl font-semibold text-gray-900 uppercase">Ekli Dokümanlar</h2>
               <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icons.X className="w-6 h-6" /></button>
             </div>
             <div className="p-6 overflow-y-auto">
@@ -331,13 +337,13 @@
                 <ul className="space-y-3">
                   {attachments.map((att, index) => (
                     <li key={index} className="p-3 bg-gray-50 rounded-md flex items-center justify-between border border-gray-200">
-                      <span className="text-sm text-gray-800 truncate pr-4" title={att.fileName}>{att.fileName}</span>
-                      <button onClick={() => openInNewTab(att)} className="text-sm font-medium text-blue-600 hover:underline flex-shrink-0">Yeni Sekmede Aç</button>
+                      <span className="text-sm text-gray-800 truncate pr-4 uppercase" title={att.fileName}>{att.fileName}</span>
+                      <button onClick={() => openInNewTab(att)} className="text-sm font-medium text-blue-600 hover:underline flex-shrink-0 uppercase font-black">Yeni Sekmede Aç</button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-center text-gray-500">Görüntülenecek ek bulunmuyor.</p>
+                <p className="text-center text-gray-500 uppercase">Görüntülenecek ek bulunmuyor.</p>
               )}
             </div>
           </div>
@@ -355,10 +361,11 @@
     // ==========================================
 
     // --- DemandProgressModal (Detaylı Akış Penceresi) ---
-    const DemandProgressModal = ({ isOpen, onClose, demand, onAddProgressItems, onEditDemand, onCompleteDemand, onEditProgressItem, onRequestDeleteProgressItem, onOpenEditModal }) => {
+    const DemandProgressModal = ({ isOpen, onClose, demand, currentTime, onAddProgressItems, onEditDemand, onCompleteDemand, onEditProgressItem, onRequestDeleteProgressItem, onOpenEditModal }) => {
       const [newProgressText, setNewProgressText] = useState('');
       const [customDate, setCustomDate] = useState(toLocalISOString(new Date()));
       const [isReminder, setIsReminder] = useState(false);
+      const [isKalanIsler, setIsKalanIsler] = useState(false);
       const [reminderDate, setReminderDate] = useState('');
       const [isConfirmingCompletion, setIsConfirmingCompletion] = useState(false);
       const [completionDate, setCompletionDate] = useState('');
@@ -374,6 +381,10 @@
       const [ogmCloudAttachmentType, setOgmCloudAttachmentType] = useState('Talep Yazı');
       const [ogmCloudOtherAttachmentName, setOgmCloudOtherAttachmentName] = useState('');
       
+      // Checklist Side Panel State
+      const [isChecklistOpen, setIsChecklistOpen] = useState(false);
+      const [checklistItems, setChecklistItems] = useState([{ name: '', requested: 0, received: 0 }]);
+
       // Date Picker Logic State
       const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       const [isReminderDatePickerOpen, setIsReminderDatePickerOpen] = useState(false);
@@ -386,12 +397,46 @@
         if (isOpen) {
             setCustomDate(toLocalISOString(new Date()));
             setIsReminder(false);
+            setIsKalanIsler(false);
             setReminderDate('');
             setIsDatePickerOpen(false);
             setIsReminderDatePickerOpen(false);
             setIsEditReminderDatePickerOpen(false);
+            setIsChecklistOpen(false);
+            
+            // Eğer demand varsa ve progressHistory içinde isKalanIsler öğeleri varsa yansıt
+            if (demand && demand.progressHistory) {
+              const uniqueItems = {};
+              demand.progressHistory
+                .filter(h => h.isKalanIsler)
+                .forEach(h => {
+                  const parts = h.description.split('|');
+                  if (parts.length >= 3) {
+                    const name = parts[0].trim();
+                    const talepParts = parts[1].split(':');
+                    const gelenParts = parts[2].split(':');
+                    const talep = parseInt(talepParts[1]) || 0;
+                    const gelen = parseInt(gelenParts[1]) || 0;
+                    // En güncel miktar en son girilendir
+                    uniqueItems[name] = { name, requested: talep, received: gelen };
+                  }
+                });
+              
+              const existingItems = Object.values(uniqueItems);
+              if (existingItems.length > 0) {
+                setChecklistItems(existingItems);
+              } else {
+                setChecklistItems([{ name: '', requested: 0, received: 0 }]);
+              }
+            } else {
+              setChecklistItems([{ name: '', requested: 0, received: 0 }]);
+            }
+
+            document.body.classList.add('modal-open');
+        } else {
+            document.body.classList.remove('modal-open');
         }
-      }, [isOpen]);
+      }, [isOpen, demand]);
 
       if (!isOpen || !demand) return null;
 
@@ -401,6 +446,7 @@
             description: item.description, 
             date: item.date.split('T')[0],
             isReminder: !!item.reminderDate,
+            isKalanIsler: !!item.isKalanIsler,
             reminderDate: item.reminderDate ? item.reminderDate.slice(0, 16) : ''
         });
       };
@@ -419,6 +465,7 @@
               ...originalItem, 
               description: editingItem.description.toLocaleUpperCase('tr-TR'), 
               date: newDate.toISOString(),
+              isKalanIsler: editingItem.isKalanIsler,
               reminderDate: editingItem.isReminder && editingItem.reminderDate ? new Date(editingItem.reminderDate).toISOString() : undefined,
               reminderRead: editingItem.isReminder ? (editingItem.reminderDate === originalItem.reminderDate ? originalItem.reminderRead : false) : false
           };
@@ -426,13 +473,14 @@
           setEditingItem(null);
       };
 
-      const parseProgressText = (text, isSupport, supportPerson, dateOverride) => {
+      const parseProgressText = (text, isSupport, supportPerson, dateOverride, isChecklist = false) => {
         const lines = text.trim().split('\n').filter(line => line.trim() !== '');
         return lines.map(line => ({ 
             date: new Date(dateOverride).toISOString(), 
             description: line.trim().toLocaleUpperCase('tr-TR'), 
             isSupportNote: isSupport, 
             supportPerson: isSupport ? supportPerson : undefined,
+            isKalanIsler: isChecklist || isKalanIsler,
             reminderDate: isReminder && reminderDate ? new Date(reminderDate).toISOString() : undefined,
             reminderRead: false
         }));
@@ -454,10 +502,137 @@
           if (parsedItems.length > 0) {
               onAddProgressItems(demand.id, parsedItems);
               setNewProgressText(''); setIsSupportNote(false); setSelectedSupportPerson(''); 
-              setHasDeliveredDocument(false); setDocumentName(''); setIsReminder(false);
+              setHasDeliveredDocument(false); setDocumentName(''); setIsReminder(false); setIsKalanIsler(false);
               setReminderDate(''); setCustomDate(toLocalISOString(new Date())); setIsDatePickerOpen(false); setIsReminderDatePickerOpen(false);
           }
         }
+      };
+
+      const handleAddChecklistRow = () => {
+        setChecklistItems([...checklistItems, { name: '', requested: 0, received: 0 }]);
+      };
+
+      const handleUpdateChecklistItem = (index, field, value) => {
+        const newItems = [...checklistItems];
+        newItems[index][field] = value;
+        setChecklistItems(newItems);
+      };
+
+      const handleSaveChecklist = () => {
+        const itemsWithNames = checklistItems.filter(i => i.name.trim() !== '');
+        if (itemsWithNames.length === 0) return alert('Lütfen malzeme adı giriniz.');
+        
+        // Checklist değişikliklerini akış notu üretmeden sadece ham veri olarak kaydet
+        // Kalıcı silme davranışını desteklemek için mevcut isKalanIsler öğelerini temizleyip yenilerini set ediyoruz
+        const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
+        
+        // Akış notu için sadece değişen kalemleri bul
+        const flowNotes = [];
+        itemsWithNames.forEach(newItem => {
+            const oldItemEntry = demand.progressHistory.find(h => h.isKalanIsler && h.description.startsWith(newItem.name.toLocaleUpperCase('tr-TR')));
+            let oldReceived = 0;
+            if (oldItemEntry) {
+                const parts = oldItemEntry.description.split('|');
+                if (parts.length >= 3) {
+                    oldReceived = parseInt(parts[2].split(':')[1]) || 0;
+                }
+            }
+            
+            if (newItem.received > oldReceived) {
+                const diff = newItem.received - oldReceived;
+                flowNotes.push({
+                    date: new Date().toISOString(),
+                    description: `${newItem.name.toLocaleUpperCase('tr-TR')} ÜRÜNDEN ${diff} ADET DAHA GELDİ, TOPLAM ${newItem.received} OLDU`,
+                    isSupportNote: false
+                });
+            }
+        });
+
+        const newChecklistHistory = itemsWithNames.map(item => ({
+          date: new Date().toISOString(),
+          description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received}`,
+          isKalanIsler: true
+        }));
+
+        const updatedDemand = {
+            ...demand,
+            progressHistory: [...otherHistory, ...flowNotes, ...newChecklistHistory]
+        };
+        
+        onEditDemand(updatedDemand);
+        setIsChecklistOpen(false);
+        setChecklistItems([{ name: '', requested: 0, received: 0 }]);
+      };
+
+      const handleChecklistRealDelete = (idx) => {
+          if (window.confirm('Emin misiniz?')) {
+              const updatedChecklistItems = checklistItems.filter((_, i) => i !== idx);
+              setChecklistItems(updatedChecklistItems);
+              
+              // Gerçek Silme Davranışı: Güncel listeyi backend'e yansıtıyoruz
+              const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
+              const newChecklistHistory = updatedChecklistItems.map(item => ({
+                date: new Date().toISOString(),
+                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received}`,
+                isKalanIsler: true
+              }));
+
+              const updatedDemand = {
+                  ...demand,
+                  progressHistory: [...otherHistory, ...newChecklistHistory]
+              };
+              
+              onEditDemand(updatedDemand);
+              alert('Ürün silindi');
+          }
+      };
+
+      // Checklist Word olarak indir (HTML Blob method)
+      const handleDownloadChecklistAsWord = () => {
+          const tableHtml = `
+            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+            <head><meta charset='utf-8'><title>Checklist</title>
+            <style>
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid black; padding: 8px; text-align: left; font-family: Arial; }
+                th { background-color: #1A4D2E; color: white; font-weight: bold; }
+            </style>
+            </head>
+            <body>
+                <h2 style="text-align: center;">${demand.title.toLocaleUpperCase('tr-TR')}</h2>
+                <h3 style="text-align: center;">KALAN İŞLER / MİKTARLAR LİSTESİ</h3>
+                <p><b>EBYS NO:</b> ${demand.ebysNumber}</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="background-color: #1A4D2E; color: white;">MALZEME ADI / TANIMI</th>
+                            <th style="background-color: #1A4D2E; color: white;">TALEP ADET</th>
+                            <th style="background-color: #1A4D2E; color: white;">GELEN ADET</th>
+                            <th style="background-color: #1A4D2E; color: white;">KALAN ADET</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${checklistItems.map(item => `
+                            <tr>
+                                <td>${item.name.toLocaleUpperCase('tr-TR')}</td>
+                                <td style="text-align: center;">${item.requested}</td>
+                                <td style="text-align: center;">${item.received}</td>
+                                <td style="text-align: center;">${item.requested - item.received}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </body>
+            </html>
+          `;
+          const blob = new Blob(['\ufeff', tableHtml], { type: 'application/msword' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${demand.ebysNumber}_checklist.doc`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
       };
 
       const resetOgmCloudForm = () => { setShowOgmCloudForm(false); setOgmCloudDidUpload(false); setOgmCloudAttachmentType(attachmentTypes[0]); setOgmCloudOtherAttachmentName(''); };
@@ -465,7 +640,7 @@
       const handleCloseModal = () => {
         const now = new Date();
         const updatedHistory = demand.progressHistory.map(item => {
-            if (item.reminderDate && new Date(item.reminderDate) <= now && !item.reminderRead) {
+            if (item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead) {
                 const readDateStr = new Date().toLocaleString('tr-TR');
                 return {
                     ...item,
@@ -506,8 +681,8 @@
       const handleExportSingleDemand = () => {
         const headers = ['TARİH', 'AÇIKLAMA', 'NOT TÜRÜ'];
         const data = timeline.map(item => {
-            const type = item.isSupportNote ? `Destek (${item.supportPerson})` : item.isCompletionNote ? 'Tamamlanma' : 'Akış';
-            return [new Date(item.date).toLocaleString('tr-TR'), item.description, type];
+            const type = item.isSupportNote ? `Destek (${item.supportPerson})` : item.isCompletionNote ? 'Tamamlanma' : (item.isKalanIsler ? 'Kalan İş' : 'Akış');
+            return [new Date(item.date).toLocaleString('tr-TR'), item.description.toLocaleUpperCase('tr-TR'), type];
         });
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
@@ -517,8 +692,8 @@
       };
 
       const progressHistoryWithMeta = demand.progressHistory.map((item, index) => ({ ...item, originalIndex: index, isEditable: true }));
-      // Filter out system notes from display
-      const timelineItems = [...progressHistoryWithMeta].filter(item => !item.description.includes('(SİSTEM NOTU)'));
+      // Filtreleme: Sistem notları ve ham checklist satırları akış listesinde gösterilmez
+      const timelineItems = [...progressHistoryWithMeta].filter(item => !item.description.includes('(SİSTEM NOTU)') && !item.isKalanIsler);
       if (demand.ebysDate !== 'N/A') timelineItems.push({ date: demand.ebysDate, description: 'Talep Oluşturuldu', isSupportNote: false, isEditable: false, originalIndex: -1 });
       const timeline = timelineItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -527,247 +702,318 @@
 
       return (
         <React.Fragment>
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] flex justify-center items-center p-4 backdrop-blur-sm" onClick={handleCloseModal}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all text-gray-900" onClick={(e) => e.stopPropagation()}>
-            
-            {/* Modal Header */}
-            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
-              <div className="flex-1 min-w-0 mr-4">
-                <div className="flex items-center gap-2 mb-1">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${demand.status === DemandStatus.TAMAMLANDI ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {demand.status}
-                    </span>
-                    <span className="text-xs text-gray-400 font-mono">#{demand.ebysNumber}</span>
-                </div>
-                <h2 className="text-xl font-bold text-gray-900 truncate" title={demand.title}>{demand.title}</h2>
-                <div className="text-xs text-gray-500 mt-0.5 truncate">{demand.requestingUnit}</div>
-              </div>
+        {/* Backdrop - Interaksiyon engellenmiş flu ekran */}
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] backdrop-blur-sm pointer-events-auto" onWheel={(e) => e.stopPropagation()}>
+          <div className="flex justify-center items-center p-4 min-h-screen">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl flex flex-col h-[85vh] overflow-hidden transform transition-all text-gray-900" onClick={(e) => e.stopPropagation()}>
               
-              <div className="flex items-center gap-2 shrink-0">
-                 <button onClick={handleExportSingleDemand} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-semibold transition-colors border border-green-200">
-                   <Icons.Download className="w-4 h-4" /> Excel
-                 </button>
-                 <button onClick={(e) => { e.stopPropagation(); onOpenEditModal(demand); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Düzenle">
-                  <Icons.Edit className="w-5 h-5" />
-                </button>
-                <button onClick={handleCloseModal} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Kapat">
-                  <Icons.X className="w-6 h-6" />
-                </button>
+              {/* Modal Header */}
+              <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+                <div className="flex-1 min-w-0 mr-4">
+                  <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${demand.status === DemandStatus.TAMAMLANDI ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {demand.status}
+                      </span>
+                      <span className="text-xs text-gray-400 font-mono uppercase tracking-widest">#{demand.ebysNumber}</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900 truncate uppercase tracking-tight" title={demand.title}>{demand.title}</h2>
+                  <div className="text-xs text-gray-500 mt-0.5 truncate uppercase tracking-widest">{demand.requestingUnit}</div>
+                </div>
+                
+                <div className="flex items-center gap-2 shrink-0">
+                   <button onClick={handleExportSingleDemand} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-semibold transition-colors border border-green-200 uppercase tracking-widest">
+                     <Icons.Download className="w-4 h-4" /> Excel
+                   </button>
+                   <button onClick={(e) => { e.stopPropagation(); onOpenEditModal(demand); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Düzenle">
+                    <Icons.Edit className="w-5 h-5" />
+                  </button>
+                  <button onClick={handleCloseModal} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Kapat">
+                    <Icons.X className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Timeline Content */}
-            <div className="flex-grow overflow-y-auto p-6 bg-white scrollbar-thin scrollbar-thumb-gray-300">
-               {demand.attachments && demand.attachments.length > 0 && (
-                  <div className="mb-6 flex justify-end">
-                      <button onClick={() => setIsAttachmentPreviewOpen(true)} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-full">
-                        <Icons.ExternalLink className="w-3 h-3" /> {demand.attachments.length} Ek Dosya
-                      </button>
+              {/* Main Content Body */}
+              <div className="flex flex-1 overflow-hidden relative">
+                {/* Timeline Section */}
+                <div className="flex-grow overflow-y-auto p-6 bg-white scrollbar-thin scrollbar-thumb-gray-300">
+                  {demand.attachments && demand.attachments.length > 0 && (
+                      <div className="mb-6 flex justify-end">
+                          <button onClick={() => setIsAttachmentPreviewOpen(true)} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-full uppercase font-black tracking-widest">
+                            <Icons.ExternalLink className="w-3 h-3" /> {demand.attachments.length} Ek Dosya
+                          </button>
+                      </div>
+                    )}
+
+                  <div className="relative">
+                    {/* Dikey Çizgi */}
+                    <div className="absolute top-0 bottom-0 left-[19px] w-0.5 bg-gray-200"></div>
+
+                    <div className="space-y-6">
+                        {timeline.map((item, index) => {
+                          const isSupport = item.isSupportNote;
+                          const isCompletion = item.isCompletionNote;
+                          const isKalan = item.isKalanIsler;
+                          const isReminderActive = item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead;
+                          
+                          let icon = <div className="w-2.5 h-2.5 bg-blue-500 rounded-full ring-4 ring-white"></div>;
+                          let cardClass = "bg-white border-gray-200";
+                          
+                          if (isCompletion) {
+                              icon = <Icons.CheckCircle className="w-6 h-6 text-green-600 bg-white ring-4 ring-white rounded-full" />;
+                              cardClass = "bg-green-50 border-green-200";
+                          } else if (isSupport) {
+                              icon = <div className="w-3 h-3 bg-orange-500 rounded-full ring-4 ring-white"></div>;
+                              cardClass = "bg-orange-50 border-orange-200";
+                          } else if (isReminderActive) {
+                              icon = <Icons.Flag className="w-5 h-5 text-red-600 bg-white rounded-full ring-4 ring-white animate-flash" />;
+                              cardClass = "bg-red-50 border-red-300 shadow-md animate-pulse-red";
+                          } else if (isKalan) {
+                              icon = <div className="w-3 h-3 bg-purple-500 rounded-full ring-4 ring-white"></div>;
+                              cardClass = "bg-purple-50 border-purple-200";
+                          }
+
+                          return (
+                            <div key={index} className="relative flex gap-6 group">
+                              <div className="flex-shrink-0 mt-1 z-10 w-10 flex justify-center">
+                                  {icon}
+                              </div>
+                              <div className={`flex-grow p-4 rounded-xl border text-sm relative ${cardClass} transition-all`}>
+                                 {isReminderActive && (
+                                     <div className="absolute -top-2.5 right-4 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide uppercase">
+                                         HATIRLATMA
+                                     </div>
+                                 )}
+                                 {isKalan && (
+                                     <div className="absolute -top-2.5 right-4 bg-purple-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide uppercase">
+                                         KALAN İŞ / MİKTAR
+                                     </div>
+                                 )}
+                                
+                                {editingItem && editingItem.index === item.originalIndex ? (
+                                  <div className="space-y-3">
+                                    <textarea value={editingItem.description} onChange={(e) => setEditingItem(prev => prev ? {...prev, description: e.target.value.toLocaleUpperCase('tr-TR')} : null)} className="w-full p-2 border rounded text-gray-900 uppercase tracking-tighter" rows={3}/>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex flex-wrap gap-2">
+                                                <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-widest">
+                                                    <input type="checkbox" checked={editingItem.isReminder} onChange={e => setEditingItem(prev => prev ? {...prev, isReminder: e.target.checked} : null)} className="rounded" />
+                                                    HATIRLATMA
+                                                </label>
+                                                <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-widest">
+                                                    <input type="checkbox" checked={editingItem.isKalanIsler} onChange={e => setEditingItem(prev => prev ? {...prev, isKalanIsler: e.target.checked} : null)} className="rounded" />
+                                                    KALAN İŞ
+                                                </label>
+                                            </div>
+                                            {editingItem.isReminder && (
+                                                <div className="relative">
+                                                    <button onClick={() => setIsEditReminderDatePickerOpen(!isEditReminderDatePickerOpen)} className="w-full flex items-center gap-2 bg-white border border-red-200 rounded px-3 py-1.5 hover:bg-red-50 transition-all">
+                                                        <Icons.Clock className="w-4 h-4 text-red-500" />
+                                                        <span className="text-xs font-medium text-red-700">
+                                                            {editingItem.reminderDate ? new Date(editingItem.reminderDate).toLocaleString('tr-TR', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute:'2-digit' }) : 'Tarih Seçiniz'}
+                                                        </span>
+                                                    </button>
+                                                    {isEditReminderDatePickerOpen && (
+                                                        <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
+                                                            <input type="datetime-local" value={editingItem.reminderDate} onChange={(e) => setEditingItem(prev => prev ? {...prev, reminderDate: e.target.value} : null)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                                            <button onClick={() => setIsEditReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase tracking-widest">Uygula</button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                      <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-800 rounded text-xs uppercase font-bold tracking-tighter">İptal</button>
+                                      <button onClick={handleSaveEdit} className="px-3 py-1 bg-blue-600 text-white rounded text-xs uppercase font-bold tracking-tighter">Kaydet</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                            {new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}
+                                        </span>
+                                        {item.isEditable && (
+                                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleStartEdit(item)} className="p-1 hover:bg-gray-200 rounded text-gray-500" title="Notu Düzenle"><Icons.Edit className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => onRequestDeleteProgressItem(demand.id, item.originalIndex, item.description)} className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                                          </div>
+                                        )}
+                                    </div>
+                                    {isSupport && <div className="text-xs font-bold text-orange-700 mb-1 uppercase tracking-tighter">Destek Personeli: {item.supportPerson}</div>}
+                                    <div className="flex items-start gap-2">
+                                      <input type="checkbox" checked={!!isKalan} readOnly className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                                      <div className={`text-gray-800 whitespace-pre-wrap leading-relaxed uppercase font-medium tracking-tight ${isReminderActive ? 'animate-flash text-red-600 font-bold' : ''}`}>
+                                        {item.description.toLocaleUpperCase('tr-TR')}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Checklist Side Panel (TAM GENİŞLİK ÇALIŞAN OVERLAY) */}
+                {isChecklistOpen && (
+                  <div className="absolute inset-0 bg-white z-30 flex flex-col transform transition-transform animate-in slide-in-from-right duration-300">
+                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center flex-shrink-0 shadow-sm">
+                      <h3 className="font-black text-green-800 flex items-center gap-2 text-xl uppercase tracking-widest"><Icons.ClipboardList className="w-7 h-7 text-green-700"/> Kalan İşler / Miktarlar Listesi</h3>
+                      <div className="flex items-center gap-3">
+                         <button onClick={handleDownloadChecklistAsWord} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-black text-xs uppercase shadow-md tracking-widest"><Icons.Download className="w-4 h-4"/> WORD OLARAK İNDİR</button>
+                         <button onClick={() => setIsChecklistOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white border p-1.5 rounded-full transition-colors"><Icons.X className="w-6 h-6"/></button>
+                      </div>
+                    </div>
+                    <div className="flex-grow overflow-y-auto p-10 bg-gray-100">
+                      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl border border-gray-300 overflow-hidden">
+                        <table className="w-full border-collapse">
+                           <thead>
+                              <tr className="bg-[#1A4D2E] text-white">
+                                 <th className="px-6 py-4 text-left font-black uppercase text-sm border border-green-800 tracking-wider">Malzeme Adı / Tanımı</th>
+                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-32">Talep Adet</th>
+                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-32">Gelen Adet</th>
+                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-32">Kalan Adet</th>
+                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-16">Sil</th>
+                              </tr>
+                           </thead>
+                           <tbody className="divide-y divide-gray-200">
+                            {checklistItems.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-green-50 transition-colors group">
+                                <td className="px-6 py-3 border-x">
+                                  <input type="text" value={item.name} onChange={(e) => handleUpdateChecklistItem(idx, 'name', e.target.value)} className="w-full border-none bg-transparent focus:ring-0 p-1 text-sm text-gray-900 font-bold placeholder-gray-300 uppercase tracking-tighter" placeholder="Malzeme adı..." />
+                                </td>
+                                <td className="px-6 py-3 border-x text-center">
+                                  <input type="number" value={item.requested} onChange={(e) => handleUpdateChecklistItem(idx, 'requested', parseInt(e.target.value) || 0)} className="w-24 border rounded bg-gray-50 p-2 text-center text-sm font-bold text-gray-900 focus:bg-white transition-colors" />
+                                </td>
+                                <td className="px-6 py-3 border-x text-center">
+                                  <input type="number" value={item.received} onChange={(e) => handleUpdateChecklistItem(idx, 'received', parseInt(e.target.value) || 0)} className="w-24 border rounded bg-gray-50 p-2 text-center text-sm font-bold text-gray-900 focus:bg-white transition-colors focus:ring-2 focus:ring-green-500" />
+                                </td>
+                                <td className="px-6 py-3 border-x text-center">
+                                  <span className={`text-sm font-black transition-colors ${item.requested - item.received > 0 ? 'text-red-600' : 'text-green-600'}`}>{item.requested - item.received}</span>
+                                </td>
+                                <td className="px-6 py-3 border-x text-center">
+                                   <button onClick={() => handleChecklistRealDelete(idx)} className="text-red-400 hover:text-red-600 transition-colors p-1"><Icons.Trash className="w-5 h-5 mx-auto"/></button>
+                                </td>
+                              </tr>
+                            ))}
+                           </tbody>
+                        </table>
+                        <button onClick={handleAddChecklistRow} className="w-full py-5 bg-white border-t border-dashed border-gray-300 text-gray-400 hover:text-green-600 hover:bg-green-50 transition-all text-sm font-black uppercase flex justify-center items-center gap-2 tracking-widest">
+                          <Icons.Plus className="w-5 h-5"/> Yeni Satır Ekle
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-6 bg-white border-t flex justify-end gap-4 flex-shrink-0 shadow-inner">
+                      <button onClick={() => setIsChecklistOpen(false)} className="px-8 py-3 bg-gray-100 text-gray-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-200 transition-colors border uppercase tracking-widest">Vazgeç</button>
+                      <button onClick={handleSaveChecklist} className="px-12 py-3 bg-green-800 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-green-900 transition-all transform hover:-translate-y-0.5 uppercase font-bold tracking-tighter">Değişiklikleri Akışa Kaydet</button>
+                    </div>
                   </div>
                 )}
+              </div>
 
-              <div className="relative">
-                {/* Dikey Çizgi */}
-                <div className="absolute top-0 bottom-0 left-[19px] w-0.5 bg-gray-200"></div>
-
-                <div className="space-y-6">
-                    {timeline.map((item, index) => {
-                      const isSupport = item.isSupportNote;
-                      const isCompletion = item.isCompletionNote;
-                      const isReminderActive = item.reminderDate && new Date(item.reminderDate) <= new Date() && !item.reminderRead;
-                      
-                      let icon = <div className="w-2.5 h-2.5 bg-blue-500 rounded-full ring-4 ring-white"></div>;
-                      let cardClass = "bg-white border-gray-200";
-                      
-                      if (isCompletion) {
-                          icon = <Icons.CheckCircle className="w-6 h-6 text-green-600 bg-white ring-4 ring-white rounded-full" />;
-                          cardClass = "bg-green-50 border-green-200";
-                      } else if (isSupport) {
-                          icon = <div className="w-3 h-3 bg-orange-500 rounded-full ring-4 ring-white"></div>;
-                          cardClass = "bg-orange-50 border-orange-200";
-                      } else if (isReminderActive) {
-                          icon = <Icons.Flag className="w-5 h-5 text-red-600 bg-white rounded-full ring-4 ring-white animate-bounce" />;
-                          cardClass = "bg-red-50 border-red-300 shadow-md animate-pulse-red";
-                      }
-
-                      return (
-                        <div key={index} className="relative flex gap-6 group">
-                          <div className="flex-shrink-0 mt-1 z-10 w-10 flex justify-center">
-                              {icon}
-                          </div>
-                          <div className={`flex-grow p-4 rounded-xl border text-sm relative ${cardClass} transition-all`}>
-                             {isReminderActive && (
-                                 <div className="absolute -top-2.5 right-4 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide">
-                                     HATIRLATMA
-                                 </div>
-                             )}
-                            
-                            {editingItem && editingItem.index === item.originalIndex ? (
-                              <div className="space-y-3">
-                                <textarea value={editingItem.description} onChange={(e) => setEditingItem(prev => prev ? {...prev, description: e.target.value.toLocaleUpperCase('tr-TR')} : null)} className="w-full p-2 border rounded text-gray-900" rows={3}/>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
-                                    <div className="flex flex-col gap-2">
-                                        <label className="flex items-center gap-2 text-xs font-bold text-gray-600">
-                                            <input type="checkbox" checked={editingItem.isReminder} onChange={e => setEditingItem(prev => prev ? {...prev, isReminder: e.target.checked} : null)} className="rounded" />
-                                            HATIRLATMA DÜZENLE
-                                        </label>
-                                        {editingItem.isReminder && (
-                                            <div className="relative">
-                                                <button onClick={() => setIsEditReminderDatePickerOpen(!isEditReminderDatePickerOpen)} className="w-full flex items-center gap-2 bg-white border border-red-200 rounded px-3 py-1.5 hover:bg-red-50 transition-all">
-                                                    <Icons.Clock className="w-4 h-4 text-red-500" />
-                                                    <span className="text-xs font-medium text-red-700">
-                                                        {editingItem.reminderDate ? new Date(editingItem.reminderDate).toLocaleString('tr-TR', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute:'2-digit' }) : 'Tarih Seçiniz'}
-                                                    </span>
-                                                </button>
-                                                {isEditReminderDatePickerOpen && (
-                                                    <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
-                                                        <input type="datetime-local" value={editingItem.reminderDate} onChange={(e) => setEditingItem(prev => prev ? {...prev, reminderDate: e.target.value} : null)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
-                                                        <button onClick={() => setIsEditReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium">Uygula</button>
-                                                    </div>
-                                                )}
+              {/* Input Area */}
+              {demand.status !== DemandStatus.TAMAMLANDI && (
+                <div className="p-5 bg-gray-50 border-t border-gray-200 flex-shrink-0">
+                   {isConfirmingCompletion ? (
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-green-200 animate-in fade-in slide-in-from-bottom-2">
+                        <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2 uppercase tracking-tighter font-black"><Icons.CheckCircle className="w-5 h-5"/> Tamamlama Onayı</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <input type="date" value={completionDate} onChange={(e) => setCompletionDate(e.target.value)} className="p-2 border rounded text-sm text-gray-900" required />
+                          <input type="text" value={completionNote} onChange={(e) => setCompletionNote(e.target.value.toLocaleUpperCase('tr-TR'))} className="p-2 border rounded text-sm text-gray-900 uppercase tracking-tighter font-medium" placeholder="Son not (isteğe bağlı)" />
+                        </div>
+                        <div className="mt-3 flex justify-end gap-2">
+                          <button onClick={() => setIsConfirmingCompletion(false)} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm uppercase font-bold tracking-tighter">Vazgeç</button>
+                          <button onClick={() => { handleConfirmCompletion(); handleCloseModal(); }} disabled={!completionDate} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 uppercase font-bold tracking-tighter">Bitir</button>
+                        </div>
+                      </div>
+                    ) : showOgmCloudForm ? (
+                       <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
+                            <h3 className="font-bold text-blue-800 mb-3 uppercase tracking-widest">OGM Bulut Yükleme Doğrulama</h3>
+                            <div className="flex items-center gap-4 mb-4">
+                                <label className="flex items-center gap-2 text-sm text-gray-800 font-medium uppercase tracking-widest"><input type="checkbox" checked={ogmCloudDidUpload} onChange={e=>setOgmCloudDidUpload(e.target.checked)} className="rounded text-blue-600"/> Dosya Yüklendi</label>
+                                {ogmCloudDidUpload && <select value={ogmCloudAttachmentType} onChange={e=>setOgmCloudAttachmentType(e.target.value)} className="text-sm border rounded p-1 text-gray-900 uppercase font-bold"><option>Talep Yazı</option><option>Teknik Şartname</option><option>Diğer</option></select>}
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                 <button onClick={resetOgmCloudForm} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm uppercase font-bold tracking-tighter">İptal</button>
+                                 <button onClick={handleOgmCloudSave} className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 uppercase font-bold tracking-tighter">Kaydet</button>
+                            </div>
+                       </div>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                         <div className="flex flex-wrap gap-3 items-center justify-between">
+                            <div className="flex flex-wrap gap-3 items-center">
+                                {/* Improved Date Picker UX */}
+                                <div className="relative">
+                                    <button onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
+                                        <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
+                                        <span className="text-xs font-medium text-gray-700 group-hover:text-blue-700 uppercase tracking-tighter font-black">{customDateDisplay}</span>
+                                    </button>
+                                    {isDatePickerOpen && (
+                                       <div className="absolute bottom-full left-0 mb-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
+                                           <input type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                           <button onClick={() => setIsDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase font-bold tracking-tighter">Uygula</button>
+                                       </div>
+                                    )}
+                                </div>
+                                <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer border transition-colors ${isReminder ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                                    <input type="checkbox" checked={isReminder} onChange={e => {
+                                        setIsReminder(e.target.checked);
+                                        if (e.target.checked && !reminderDate) {
+                                            setReminderDate(toLocalISOString(new Date()));
+                                        }
+                                    }} className="rounded text-red-600 focus:ring-red-500"/>
+                                    <span className="text-xs font-bold uppercase tracking-widest font-black">Hatırlatma</span>
+                                </label>
+                                {isReminder && (
+                                    <div className="relative">
+                                        <button onClick={() => setIsReminderDatePickerOpen(!isReminderDatePickerOpen)} className="flex items-center gap-2 bg-white border border-red-300 rounded px-3 py-1.5 hover:bg-red-50 transition-all group">
+                                            <Icons.Clock className="w-4 h-4 text-red-500" />
+                                            <span className="text-xs font-bold text-red-700 uppercase tracking-tighter">{reminderDate ? new Date(reminderDate).toLocaleString('tr-TR') : 'Tarih ve Saat Seçiniz'}</span>
+                                        </button>
+                                        {isReminderDatePickerOpen && (
+                                            <div className="absolute bottom-full left-0 mb-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[220px]">
+                                                <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                                <button onClick={() => setIsReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 font-medium uppercase font-black tracking-widest">Uygula</button>
                                             </div>
                                         )}
                                     </div>
-                                </div>
-                                <div className="flex justify-end gap-2">
-                                  <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-800 rounded text-xs">İptal</button>
-                                  <button onClick={handleSaveEdit} className="px-3 py-1 bg-blue-600 text-white rounded text-xs">Kaydet</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                        {new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}
-                                    </span>
-                                    {item.isEditable && (
-                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => handleStartEdit(item)} className="p-1 hover:bg-gray-200 rounded text-gray-500" title="Notu Düzenle"><Icons.Edit className="w-3.5 h-3.5" /></button>
-                                        <button onClick={() => onRequestDeleteProgressItem(demand.id, item.originalIndex, item.description)} className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded"><Icons.Trash className="w-3.5 h-3.5" /></button>
-                                      </div>
-                                    )}
-                                </div>
-                                {isSupport && <div className="text-xs font-bold text-orange-700 mb-1">Destek Personeli: {item.supportPerson}</div>}
-                                <div className="text-gray-800 whitespace-pre-wrap leading-relaxed">{item.description}</div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                                )}
+                                <button onClick={() => setIsChecklistOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors text-xs font-bold uppercase tracking-widest font-black">
+                                  <Icons.ClipboardList className="w-4 h-4" /> Kalan İşler / Miktarlar
+                                </button>
+                            </div>
+                         </div>
+
+                         {/* Main Text Area & Buttons */}
+                         <div className="flex gap-2 items-start">
+                             <textarea 
+                                value={newProgressText} 
+                                onChange={(e) => setNewProgressText(e.target.value.toLocaleUpperCase('tr-TR'))} 
+                                rows={2} 
+                                className="flex-grow rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm p-3 text-gray-900 uppercase font-bold tracking-tight" 
+                                placeholder="Akış notu giriniz..." 
+                              />
+                             <div className="flex flex-col gap-2 w-24 shrink-0">
+                                 <button onClick={() => { handlePreview(); handleCloseModal(); }} disabled={!newProgressText.trim() && !hasDeliveredDocument} className="w-full py-1 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase font-black tracking-widest">
+                                     Ekle
+                                 </button>
+                                 {demand.status === DemandStatus.ISLEMDE && (
+                                    <button onClick={handleStartCompletion} className="w-full py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-200 text-xs font-bold transition-colors uppercase font-black tracking-widest">
+                                        Bitir
+                                    </button>
+                                 )}
+                             </div>
+                         </div>
+                      </div>
+                    )}
                 </div>
-              </div>
+              )}
             </div>
-
-            {/* Input & Action Area */}
-            {demand.status !== DemandStatus.TAMAMLANDI && (
-              <div className="p-5 bg-gray-50 border-t border-gray-200">
-                 {isConfirmingCompletion ? (
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-green-200 animate-in fade-in slide-in-from-bottom-2">
-                      <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2"><Icons.CheckCircle className="w-5 h-5"/> Tamamlama Onayı</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input type="date" value={completionDate} onChange={(e) => setCompletionDate(e.target.value)} className="p-2 border rounded text-sm text-gray-900" required />
-                        <input type="text" value={completionNote} onChange={(e) => setCompletionNote(e.target.value.toLocaleUpperCase('tr-TR'))} className="p-2 border rounded text-sm text-gray-900" placeholder="Son not (isteğe bağlı)" />
-                      </div>
-                      <div className="mt-3 flex justify-end gap-2">
-                        <button onClick={() => setIsConfirmingCompletion(false)} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm">Vazgeç</button>
-                        <button onClick={handleConfirmCompletion} disabled={!completionDate} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700">Tamamla</button>
-                      </div>
-                    </div>
-                  ) : showOgmCloudForm ? (
-                     <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
-                          <h3 className="font-bold text-blue-800 mb-3">OGM Bulut Yükleme Doğrulama</h3>
-                          <div className="flex items-center gap-4 mb-4">
-                              <label className="flex items-center gap-2 text-sm text-gray-800 font-medium"><input type="checkbox" checked={ogmCloudDidUpload} onChange={e=>setOgmCloudDidUpload(e.target.checked)} className="rounded text-blue-600"/> Dosya Yüklendi</label>
-                              {ogmCloudDidUpload && <select value={ogmCloudAttachmentType} onChange={e=>setOgmCloudAttachmentType(e.target.value)} className="text-sm border rounded p-1 text-gray-900"><option>Talep Yazı</option><option>Teknik Şartname</option><option>Diğer</option></select>}
-                          </div>
-                          <div className="flex justify-end gap-2">
-                               <button onClick={resetOgmCloudForm} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm">İptal</button>
-                               <button onClick={handleOgmCloudSave} className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Kaydet</button>
-                          </div>
-                     </div>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                       <div className="flex flex-wrap gap-3 items-center justify-between">
-                          <div className="flex flex-wrap gap-3 items-center">
-                              {/* Improved Date Picker UX */}
-                              <div className="relative">
-                                  <button onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
-                                      <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
-                                      <span className="text-xs font-medium text-gray-700 group-hover:text-blue-700">{customDateDisplay}</span>
-                                  </button>
-                                  {isDatePickerOpen && (
-                                     <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
-                                         <input type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
-                                         <button onClick={() => setIsDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium">Uygula</button>
-                                     </div>
-                                  )}
-                              </div>
-                              <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer border transition-colors ${isReminder ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600'}`}>
-                                  <input type="checkbox" checked={isReminder} onChange={e => setIsReminder(e.target.checked)} className="rounded text-red-600 focus:ring-red-500"/>
-                                  <span className="text-xs font-bold uppercase">Hatırlatma</span>
-                              </label>
-                          </div>
-                       </div>
-
-                       {/* Conditional Inputs */}
-                       <div className="flex flex-col gap-2">
-                           {isSupportNote && (
-                              <div className="flex flex-wrap gap-2 items-center p-2 bg-orange-50 border border-orange-100 rounded text-sm animate-in fade-in slide-in-from-top-1">
-                                  <select value={selectedSupportPerson} onChange={e => setSelectedSupportPerson(e.target.value)} className="border-gray-300 rounded text-xs py-1 text-gray-900">
-                                      <option value="" disabled>Personel Seçiniz</option>
-                                      {supportPeople.map(p => <option key={p} value={p}>{p}</option>)}
-                                  </select>
-                                  <label className="flex items-center gap-1 ml-2 text-gray-700 font-medium"><input type="checkbox" checked={hasDeliveredDocument} onChange={e => setHasDeliveredDocument(e.target.checked)} className="rounded text-orange-600"/> Evrak Teslim</label>
-                                  {hasDeliveredDocument && <input type="text" placeholder="Evrak Adı" value={documentName} onChange={e => setDocumentName(e.target.value.toLocaleUpperCase('tr-TR'))} className="border-gray-300 rounded text-xs py-1 px-2 text-gray-900 flex-grow" />}
-                              </div>
-                           )}
-                           {isReminder && (
-                              <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-100 rounded text-sm animate-in fade-in slide-in-from-top-1">
-                                   <span className="text-xs font-bold text-red-700 uppercase">Hatırlatma Zamanı:</span>
-                                   <div className="relative">
-                                      <button onClick={() => setIsReminderDatePickerOpen(!isReminderDatePickerOpen)} className="flex items-center gap-2 bg-white border border-red-200 rounded px-3 py-1.5 hover:bg-red-50 transition-all group">
-                                          <Icons.Clock className="w-4 h-4 text-red-500" />
-                                          <span className="text-xs font-medium text-red-700">
-                                              {reminderDate ? new Date(reminderDate).toLocaleString('tr-TR', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute:'2-digit' }) : 'Tarih Seçiniz'}
-                                          </span>
-                                      </button>
-                                      {isReminderDatePickerOpen && (
-                                          <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
-                                              <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
-                                              <button onClick={() => setIsReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium">Uygula</button>
-                                          </div>
-                                      )}
-                                  </div>
-                              </div>
-                           )}
-                       </div>
-
-                       {/* Main Text Area & Buttons */}
-                       <div className="flex gap-2 items-start">
-                           <textarea 
-                              value={newProgressText} 
-                              onChange={(e) => setNewProgressText(e.target.value.toLocaleUpperCase('tr-TR'))} 
-                              rows={2} 
-                              className="flex-grow rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm p-3 text-gray-900" 
-                              placeholder="Akış notu giriniz..." 
-                            />
-                           <div className="flex flex-col gap-2 w-24 shrink-0">
-                               <button onClick={handlePreview} disabled={!newProgressText.trim() && !hasDeliveredDocument} className="w-full py-1 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                   Ekle
-                               </button>
-                               {demand.status === DemandStatus.ISLEMDE && (
-                                  <button onClick={handleStartCompletion} className="w-full py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-200 text-xs font-bold transition-colors">
-                                      Bitir
-                                  </button>
-                               )}
-                           </div>
-                       </div>
-                    </div>
-                  )}
-              </div>
-            )}
           </div>
         </div>
         <AttachmentPreviewModal isOpen={isAttachmentPreviewOpen} onClose={() => setIsAttachmentPreviewOpen(false)} attachments={demand.attachments} />
@@ -777,15 +1023,20 @@
 
     // --- DemandModal (Yeni/Düzenle) ---
     const DemandModal = ({ isOpen, onClose, onSave, demandToEdit }) => {
-      const [formData, setFormData] = useState({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.YENI, ebysNumber: '', ebysDate: '' });
-      const [showDriveForm, setShowDriveForm] = useState(false);
-      const [driveDidUpload, setDriveDidUpload] = useState(false);
-      const [driveAttachmentType, setDriveAttachmentType] = useState('Talep Yazı');
-      const [driveOtherAttachmentName, setDriveOtherAttachmentName] = useState('');
-      const attachmentTypes = ['Talep Yazı', 'Teknik Şartname', 'Talep Formları', 'Diğer'];
+      const [formData, setFormData] = useState({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
+      const [checklistInput, setChecklistInput] = useState('');
+      const [processedChecklist, setProcessedChecklist] = useState([]);
+      const [manualChecklistItems, setManualChecklistItems] = useState([{ name: '', requested: 0 }]);
 
       useEffect(() => {
         if (demandToEdit) {
+          // EBYS tarihi input için yerel formatta hazırlanmalı
+          let dateStr = '';
+          if (demandToEdit.ebysDate && demandToEdit.ebysDate !== 'N/A') {
+              // Using ISO split to avoid 1-day drfit from timezone conversions
+              dateStr = demandToEdit.ebysDate.split('T')[0];
+          }
+          
           setFormData({ 
               title: demandToEdit.title, 
               description: demandToEdit.description, 
@@ -795,12 +1046,16 @@
               priority: demandToEdit.priority, 
               status: demandToEdit.status, 
               ebysNumber: String(demandToEdit.ebysNumber) || '', 
-              ebysDate: demandToEdit.ebysDate ? demandToEdit.ebysDate.split('T')[0] : '' 
+              ebysDate: dateStr
           });
-          setShowDriveForm(false); setDriveDidUpload(false); setDriveAttachmentType(attachmentTypes[0]); setDriveOtherAttachmentName('');
+          setChecklistInput('');
+          setProcessedChecklist([]);
+          setManualChecklistItems([{ name: '', requested: 0 }]);
         } else {
-          setFormData({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.YENI, ebysNumber: '', ebysDate: '' });
-          setShowDriveForm(false); setDriveDidUpload(false); setDriveAttachmentType(attachmentTypes[0]); setDriveOtherAttachmentName('');
+          setFormData({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
+          setChecklistInput('');
+          setProcessedChecklist([]);
+          setManualChecklistItems([{ name: '', requested: 0 }]);
         }
       }, [demandToEdit, isOpen]);
       
@@ -814,85 +1069,142 @@
         setFormData(prev => ({...prev, requestingUnits: prev.requestingUnits.filter(unit => unit !== unitToRemove)}));
       };
 
+      const handleAddManualRow = () => {
+        setManualChecklistItems([...manualChecklistItems, { name: '', requested: 0 }]);
+      };
+
+      const handleUpdateManualRow = (index, field, value) => {
+        const updated = [...manualChecklistItems];
+        updated[index][field] = value;
+        setManualChecklistItems(updated);
+      };
+
+      const handleAktar = () => {
+        if (!checklistInput.trim()) return alert("Lütfen önce veri yapıştırın.");
+        const lines = checklistInput.split('\n');
+        const results = [];
+        lines.forEach(line => {
+            const parts = line.split(/\t| {2,}/);
+            if (parts[0]) {
+                results.push({ name: parts[0].trim(), requested: parseInt(parts[1]) || 0 });
+            }
+        });
+        setProcessedChecklist(results);
+        setChecklistInput('');
+      };
+
       const handleSubmit = (e) => {
         e.preventDefault();
         if (!formData.title || !formData.ebysNumber || !formData.ebysDate || formData.requestingUnits.length === 0) {
             if (formData.requestingUnits.length === 0) alert('Lütfen en az bir talep eden birim seçin.');
             return;
         }
-        let ogmDriveAttachmentName;
-        if (showDriveForm && driveDidUpload) {
-          ogmDriveAttachmentName = driveAttachmentType === 'Diğer' && driveOtherAttachmentName.trim() ? driveOtherAttachmentName.trim() : driveAttachmentType;
-        }
-        onSave({ ...(demandToEdit && { id: demandToEdit.id }), ...formData, requestingUnit: formData.requestingUnits.join(','), ogmDriveAttachmentName });
-      };
 
-      const handleStartDriveFlow = () => { window.open('https://bulut.ogm.gov.tr/TALEPLER', '_blank', 'noopener,noreferrer'); setShowDriveForm(true); };
+        // Must click AKTAR if input is not empty
+        if (checklistInput.trim() && processedChecklist.length === 0) {
+          return alert("Lütfen yapıştırılan veriyi AKTAR butonuna basarak checklist'e dönüştürün.");
+        }
+
+        // Process Checklist
+        let finalChecklistItems = [...processedChecklist];
+        manualChecklistItems.forEach(item => {
+            if (item.name.trim()) {
+                finalChecklistItems.push(item);
+            }
+        });
+
+        const checklistProgressItems = finalChecklistItems.map(item => ({
+            date: new Date().toISOString(),
+            description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: 0 | Kalan: ${item.requested}`,
+            isKalanIsler: true
+        }));
+
+        onSave({ 
+            ...(demandToEdit && { id: demandToEdit.id }), 
+            ...formData, 
+            requestingUnit: formData.requestingUnits.join(','), 
+            checklistItems: checklistProgressItems 
+        });
+      };
       
       if (!isOpen) return null;
 
       return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 backdrop-blur-sm pointer-events-auto" onWheel={e=>e.stopPropagation()}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 font-serif relative" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between mb-4 border-b pb-2">
-                <h2 className="text-2xl font-semibold text-gray-900">{demandToEdit ? 'Düzenle' : 'Yeni Kayıt'}</h2>
+                <h2 className="text-2xl font-semibold text-gray-900 uppercase font-black tracking-widest">{demandToEdit ? 'Düzenle' : 'Yeni Kayıt'}</h2>
                 <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
-                <input type="text" placeholder="Başlık" value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500" required/>
-                <div className="grid grid-cols-2 gap-4"><input type="text" placeholder="EBYS No" value={formData.ebysNumber} onChange={e=>setFormData({...formData, ebysNumber:e.target.value})} className="border p-2 rounded text-gray-900"/><input type="date" value={formData.ebysDate} onChange={e=>setFormData({...formData, ebysDate:e.target.value})} className="border p-2 rounded text-gray-900"/></div>
-                <textarea placeholder="Açıklama" value={formData.description} onChange={e=>setFormData({...formData, description:e.target.value})} className="w-full border p-2 rounded text-gray-900" rows={3}/>
+                <input type="text" placeholder="Başlık" value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" required/>
+                <div className="grid grid-cols-2 gap-4"><input type="text" placeholder="EBYS No" value={formData.ebysNumber} onChange={e=>setFormData({...formData, ebysNumber:e.target.value})} className="border p-2 rounded text-gray-900 font-bold uppercase"/><input type="date" value={formData.ebysDate} onChange={e=>setFormData({...formData, ebysDate:e.target.value})} className="border p-2 rounded text-gray-900 uppercase"/></div>
+                <textarea placeholder="Açıklama" value={formData.description} onChange={e=>setFormData({...formData, description:e.target.value})} className="w-full border p-2 rounded text-gray-900 uppercase font-medium tracking-tight" rows={3}/>
                 
-                {/* OGM Drive Section for New Demands */}
-                {!demandToEdit && (
-                  <div className="border border-gray-200 p-3 rounded bg-gray-50">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Doküman Ekleme</label>
-                    {!showDriveForm ? (
-                      <button type="button" onClick={handleStartDriveFlow} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white text-gray-800 rounded border hover:bg-gray-100 transition-colors">
-                        <Icons.ExternalLink className="w-5 h-5" /><span>OGM Drive'a Yükle</span>
-                      </button>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                            <input id="drive-did-upload" type="checkbox" checked={driveDidUpload} onChange={(e) => setDriveDidUpload(e.target.checked)} className="w-4 h-4 text-blue-600 rounded" />
-                            <label htmlFor="drive-did-upload" className="text-sm font-medium text-gray-900">Dosya yükledin mi?</label>
+                {/* Checklist Ekle Section */}
+                <div className="border border-purple-100 p-3 rounded-xl bg-purple-50/30">
+                    <label className="block text-sm font-black text-purple-700 mb-2 uppercase flex items-center gap-2 tracking-widest">
+                      <Icons.ClipboardList className="w-4 h-4"/> Checklist Ekle
+                    </label>
+                    <div className="space-y-3">
+                        <div className="flex gap-2">
+                           <textarea 
+                              placeholder="Excel'den kopyaladığınız veriyi buraya yapıştırın ve AKTAR'a basın..." 
+                              value={checklistInput}
+                              onChange={(e) => setChecklistInput(e.target.value)}
+                              className="flex-grow border p-2 rounded-lg text-xs text-gray-900 bg-white min-h-[60px] uppercase font-bold"
+                           />
+                           <button type="button" onClick={handleAktar} className="px-4 bg-purple-600 text-white rounded-lg text-xs font-black uppercase shadow-md hover:bg-purple-700 transition-all shrink-0">Aktar</button>
                         </div>
-                        {driveDidUpload && (
-                            <div className="space-y-2">
-                                <select value={driveAttachmentType} onChange={(e) => setDriveAttachmentType(e.target.value)} className="w-full border rounded p-2 text-sm text-gray-900">
-                                    {attachmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                                {driveAttachmentType === 'Diğer' && <input type="text" placeholder="Ek Adı" value={driveOtherAttachmentName} onChange={(e) => setDriveOtherAttachmentName(e.target.value)} className="w-full border rounded p-2 text-sm text-gray-900" />}
-                            </div>
+                        
+                        {processedChecklist.length > 0 && (
+                          <div className="bg-white border rounded-lg p-2 max-h-40 overflow-y-auto">
+                             <div className="text-[10px] font-bold text-gray-400 mb-2 uppercase px-1 tracking-widest font-black">Önizleme ({processedChecklist.length} Kalem)</div>
+                             {processedChecklist.map((it, ix) => (
+                               <div key={ix} className="text-[11px] border-b py-1 flex justify-between px-1">
+                                  <span className="text-gray-700 font-black uppercase tracking-tight">{it.name}</span>
+                                  <span className="text-purple-600 font-black tracking-widest">{it.requested} Adet</span>
+                               </div>
+                             ))}
+                          </div>
                         )}
-                      </div>
-                    )}
-                  </div>
-                )}
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest font-black">Manuel Ekle:</label>
+                            {manualChecklistItems.map((item, idx) => (
+                                <div key={idx} className="flex gap-2">
+                                    <input type="text" placeholder="Malzeme Adı" value={item.name} onChange={e => handleUpdateManualRow(idx, 'name', e.target.value)} className="flex-grow border p-1 rounded-lg text-xs text-gray-900 uppercase font-bold tracking-tight" />
+                                    <input type="number" placeholder="Adet" value={item.requested} onChange={e => handleUpdateManualRow(idx, 'requested', parseInt(e.target.value) || 0)} className="w-20 border p-1 rounded-lg text-xs text-gray-900 font-bold" />
+                                </div>
+                            ))}
+                            <button type="button" onClick={handleAddManualRow} className="text-xs text-blue-600 font-black hover:underline uppercase tracking-tight font-black">+ Yeni Satır</button>
+                        </div>
+                    </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <label className="text-sm font-bold text-gray-700">Birimler</label>
+                        <label className="text-sm font-bold text-gray-700 uppercase tracking-widest font-black">Birimler</label>
                         <div className="flex flex-wrap gap-1 p-2 border rounded min-h-[40px] bg-gray-50">
-                            {formData.requestingUnits.map(u=><span key={u} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded flex items-center gap-1">{u} <button type="button" onClick={()=>handleRemoveUnit(u)} className="hover:text-red-500"><Icons.XCircle className="w-3 h-3"/></button></span>)}
+                            {formData.requestingUnits.map(u=><span key={u} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded flex items-center gap-1 uppercase font-black">{u} <button type="button" onClick={()=>handleRemoveUnit(u)} className="hover:text-red-500"><Icons.XCircle className="w-3 h-3"/></button></span>)}
                         </div>
                         <div className="flex gap-2">
-                            <select value={formData.unitToAdd} onChange={e=>setFormData({...formData, unitToAdd:e.target.value})} className="border p-1 text-sm flex-grow text-gray-900">
+                            <select value={formData.unitToAdd} onChange={e=>setFormData({...formData, unitToAdd:e.target.value})} className="border p-1 text-sm flex-grow text-gray-900 uppercase font-black">
                                 <option value="" disabled>Seç...</option>
                                 {Object.values(RequestingUnit).filter(u=>!formData.requestingUnits.includes(u)).map(u=><option key={u} value={u}>{u}</option>)}
                             </select>
-                            <button type="button" onClick={handleAddUnit} className="bg-gray-200 px-3 rounded text-sm text-gray-900 hover:bg-gray-300">Ekle</button>
+                            <button type="button" onClick={handleAddUnit} className="bg-gray-200 px-3 rounded text-sm text-gray-900 hover:bg-gray-300 uppercase font-black tracking-widest">Ekle</button>
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <select value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white">{Object.values(DemandType).map(t=><option key={t} value={t}>{t}</option>)}</select>
-                        <select value={formData.priority} onChange={e=>setFormData({...formData, priority:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white">{Object.values(DemandPriority).map(p=><option key={p} value={p}>{p}</option>)}</select>
-                        <select value={formData.status} onChange={e=>setFormData({...formData, status:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white">{Object.values(DemandStatus).map(s=><option key={s} value={s}>{s}</option>)}</select>
+                        <select value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white uppercase font-black tracking-widest">{Object.values(DemandType).map(t=><option key={t} value={t}>{t}</option>)}</select>
+                        <select value={formData.priority} onChange={e=>setFormData({...formData, priority:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white uppercase font-black tracking-widest">{Object.values(DemandPriority).map(p=><option key={p} value={p}>{p}</option>)}</select>
+                        <select value={formData.status} onChange={e=>setFormData({...formData, status:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white uppercase font-black tracking-widest">{Object.values(DemandStatus).filter(s => s !== DemandStatus.YENI).map(s=><option key={s} value={s}>{s}</option>)}</select>
                     </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4 border-t">
-                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded text-gray-900 hover:bg-gray-300 transition-colors">İptal</button>
-                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Kaydet</button>
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded text-gray-900 hover:bg-gray-300 transition-colors uppercase font-black tracking-widest">İptal</button>
+                    <button type="submit" className={`px-8 py-2 rounded font-black uppercase text-sm shadow-lg transition-all ${processedChecklist.length === 0 && checklistInput.trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>Kaydet</button>
                 </div>
             </form>
           </div>
@@ -918,43 +1230,77 @@
       const handleEditClick = (e) => { e.stopPropagation(); onEdit(demand); };
       const handleDeleteClick = (e) => { e.stopPropagation(); onRequestDelete(demand.id); };
 
-      // Ensure date comparison works correctly using the passed currentTime prop
       const hasActiveReminder = demand.progressHistory.some(
           item => item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead
       );
 
+      const calculateOpenDays = (ebysDate) => {
+        if (!ebysDate || ebysDate === 'N/A') return null;
+        const start = new Date(ebysDate);
+        const today = new Date();
+        const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        return diff >= 0 ? diff : 0;
+      };
+
+      const openDays = calculateOpenDays(demand.ebysDate);
+
+      // EBYS tarihini backend'den geldiği HALİYLE göster (Shift logic yok, tam format)
+      const ebysDateDisplay = demand.ebysDate === 'N/A' ? 'N/A' : demand.ebysDate.split('T')[0].split('-').reverse().join('.');
+
+      // Checklist durumunu render seviyesinde kontrol etme
+      const isPartiallyCompleted = demand.progressHistory.some(h => {
+          if (!h.isKalanIsler) return false;
+          const parts = h.description.split('|');
+          if (parts.length >= 3) {
+            const gelenValue = parts[2].split(':')[1];
+            const gelen = (parseInt(gelenValue) || 0);
+            return gelen > 0;
+          }
+          return false;
+      });
+
       return (
         <div className={`relative bg-white rounded-lg shadow-sm p-4 mb-4 border hover:shadow-lg transition-all duration-200 flex flex-col cursor-pointer ${hasActiveReminder ? 'border-red-500 animate-pulse-red' : 'border-gray-200'}`} onDoubleClick={() => onShowProgress(demand)}>
           {hasActiveReminder && (
-              <div className="absolute -top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow z-10 animate-flash">
+              <div className="absolute -top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow z-10 animate-flash uppercase tracking-widest">
                   HATIRLATMA
               </div>
           )}
           <div className="flex justify-between items-start mb-2">
             <div className="flex items-center gap-2">
               <span className="bg-gray-800 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-sm">{sequenceNumber}</span>
-              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded ${tStyle}`}>{demand.type}</span>
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded ${tStyle} uppercase tracking-widest`}>{demand.type}</span>
             </div>
             <div className="flex space-x-2 flex-shrink-0">
               <button onClick={handleEditClick} className="text-gray-400 hover:text-blue-600 transition-colors" title="Düzenle"><Icons.Edit className="w-4 h-4" /></button>
               <button onClick={handleDeleteClick} className="text-gray-400 hover:text-red-500 transition-colors" title="Sil"><Icons.Trash className="w-4 h-4" /></button>
             </div>
           </div>
-          <h4 className="font-semibold text-gray-800 break-words mb-2">{demand.title}</h4>
+          <h4 className="font-semibold text-gray-800 break-words mb-2 uppercase font-black tracking-tight">{demand.title}</h4>
           {demand.requestingUnit && (
             <div className="flex items-center text-sm text-gray-500 mb-2">
               <Icons.Building className="w-4 h-4 mr-1.5 text-gray-400" />
-              <span className="font-medium">{demand.requestingUnit}</span>
+              <span className="font-medium uppercase tracking-widest">{demand.requestingUnit}</span>
             </div>
           )}
-          <p className="text-sm text-gray-600 mb-4 break-words flex-grow line-clamp-3">{demand.description}</p>
+          <p className="text-sm text-gray-600 mb-4 break-words flex-grow line-clamp-3 uppercase font-bold tracking-tight leading-tight">{demand.description}</p>
           <div className="border-t border-gray-200 pt-3 mt-auto space-y-2">
+            {isPartiallyCompleted && demand.status !== DemandStatus.TAMAMLANDI && (
+               <div className="text-green-800 font-bold text-xs uppercase tracking-tight font-black">Kısmen Tamamlanmış</div>
+            )}
             <div className="flex justify-between items-center text-xs text-gray-500">
-              <span className="font-semibold text-gray-600">EBYS No: {demand.ebysNumber}</span>
-              <span className="flex items-center gap-1.5"><Icons.Calendar className="w-4 h-4" />{demand.ebysDate === 'N/A' ? 'N/A' : new Date(demand.ebysDate).toLocaleDateString('tr-TR')}</span>
+              <div className="flex flex-col">
+                <span className="font-semibold text-gray-600 uppercase tracking-widest">EBYS NO: {demand.ebysNumber}</span>
+                {openDays !== null && (
+                  <span className="text-red-600 font-black uppercase mt-0.5 tracking-widest">
+                    {openDays} GÜNDÜR AÇIK
+                  </span>
+                )}
+              </div>
+              <span className="flex items-center gap-1.5 uppercase font-bold"><Icons.Calendar className="w-4 h-4" />{ebysDateDisplay}</span>
             </div>
             <div className="flex justify-between items-center text-xs">
-              <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${pStyles.bg} ${pStyles.text}`}><Icons.Flag className="w-3 h-3"/>{demand.priority}</span>
+              <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${pStyles.bg} ${pStyles.text} uppercase font-black tracking-widest`}><Icons.Flag className="w-3 h-3"/>{demand.priority}</span>
             </div>
           </div>
           {isProcessing && (
@@ -973,21 +1319,21 @@
         [DemandStatus.ISLEMDE]: { border: 'border-orange-500', text: 'text-orange-600' },
         [DemandStatus.TAMAMLANDI]: { border: 'border-green-500', text: 'text-green-600' },
       };
-      const statusDisplayNames = { [DemandStatus.YENI]: 'YENİ TALEPLER', [DemandStatus.ISLEMDE]: 'İŞLEMDEKİ TALEPLER', [DemandStatus.TAMAMLANDI]: 'TAMAMLANAN TALEPLER' };
+      const statusDisplayNames = { [DemandStatus.YENI]: 'İŞLEMDEKİ TALEPLER', [DemandStatus.ISLEMDE]: 'İŞLEMDEKİ TALEPLER', [DemandStatus.TAMAMLANDI]: 'TAMAMLANAN TALEPLER' };
       const styles = statusStyles[status] || statusStyles[DemandStatus.YENI];
 
       return (
         <div className="bg-gray-100 rounded-lg p-4 w-full flex flex-col min-h-[calc(100vh-260px)]">
           <div className={`border-l-4 ${styles.border} pl-2 mb-4`}>
-            <h3 className={`font-bold text-lg ${styles.text} flex items-center gap-2`}>
+            <h3 className={`font-bold text-lg ${styles.text} flex items-center gap-2 uppercase tracking-widest`}>
               {statusDisplayNames[status] || status}
-              <span className="text-sm bg-gray-200 text-gray-600 rounded-full px-2.5 py-0.5">{demands.length}</span>
+              <span className="text-sm bg-gray-200 text-gray-600 rounded-full px-2.5 py-0.5 font-black">{demands.length}</span>
             </h3>
           </div>
           <div className="flex-grow">
             {demands.map((demand, idx) => <KanbanCard key={demand.id} demand={demand} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} isProcessing={processingDemands.has(demand.id)} currentTime={currentTime} sequenceNumber={idx + 1} />)}
             {demands.length === 0 && (
-              <div className="flex items-center justify-center h-full text-center text-sm text-gray-500 py-10">
+              <div className="flex items-center justify-center h-full text-center text-sm text-gray-500 py-10 uppercase font-black tracking-widest opacity-25">
                 <div className="bg-white/50 p-8 rounded-lg border-2 border-dashed border-gray-300">Bu bölümde talep bulunmuyor.</div>
               </div>
             )}
@@ -1010,15 +1356,15 @@
       <header className="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center gap-3">
             <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3l0Z2I0Zml2bXJhM201dGhyNWh6YmN3a3A1NnA1c3Y3bGdidXd6bSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/xzSGnyFEGYQmTe29yi/giphy.gif" alt="Logo" className="h-12 w-auto mix-blend-multiply" />
-            <h1 className="text-xl font-bold text-gray-800 hidden sm:block">Task Line</h1>
+            <h1 className="text-xl font-bold text-gray-800 hidden sm:block uppercase tracking-widest font-black">Task Line</h1>
         </div>
         <div className="flex items-center gap-4">
           {showUploadButton && (
-            <button onClick={onUpload} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+            <button onClick={onUpload} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors uppercase font-black text-sm tracking-widest shadow-md">
               <Icons.CloudUp className="w-5 h-5" /><span>Veri Yükle</span>
             </button>
           )}
-          <button onClick={onAddDemand} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          <button onClick={onAddDemand} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors uppercase font-black text-sm tracking-widest shadow-md">
             <Icons.Plus className="w-5 h-5" /><span>Yeni Talep Oluştur</span>
           </button>
         </div>
@@ -1027,30 +1373,29 @@
 
     // --- FilterControls ---
     const FilterControls = ({ counts, activeStatus, onStatusChange, onExport }) => {
-      const statusOrder = [DemandStatus.YENI, DemandStatus.ISLEMDE, DemandStatus.TAMAMLANDI];
+      const statusOrder = [DemandStatus.ISLEMDE, DemandStatus.TAMAMLANDI];
       const statusStyles = {
-        [DemandStatus.YENI]: { active: 'bg-blue-600 text-white shadow-md', inactive: 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50' },
         [DemandStatus.ISLEMDE]: { active: 'bg-orange-500 text-white shadow-md', inactive: 'bg-white text-orange-600 border border-orange-200 hover:bg-orange-50' },
         [DemandStatus.TAMAMLANDI]: { active: 'bg-green-600 text-white shadow-md', inactive: 'bg-white text-green-600 border border-green-200 hover:bg-green-50' },
       };
-      const statusDisplayNames = { [DemandStatus.YENI]: 'YENİ TALEPLER', [DemandStatus.ISLEMDE]: 'İŞLEMDEKİLER', [DemandStatus.TAMAMLANDI]: 'TAMAMLANANLAR' };
+      const statusDisplayNames = { [DemandStatus.ISLEMDE]: 'İŞLEMDEKİLER', [DemandStatus.TAMAMLANDI]: 'TAMAMLANANLAR' };
       
       return (
         <div className="pt-2">
           <div className="bg-white p-2 rounded-xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 border border-gray-100">
-            <div className="flex-1 w-full grid grid-cols-3 gap-2">
+            <div className="flex-1 w-full grid grid-cols-2 gap-2">
               {statusOrder.map(status => {
                 const isActive = activeStatus === status;
                 const style = statusStyles[status];
                 return (
-                  <button key={status} onClick={() => onStatusChange(status)} className={`flex flex-col sm:flex-row items-center justify-center py-2 px-1 rounded-lg transition-all duration-200 text-xs sm:text-sm font-bold ${isActive ? style.active : style.inactive}`}>
+                  <button key={status} onClick={() => onStatusChange(status)} className={`flex flex-col sm:flex-row items-center justify-center py-2 px-1 rounded-lg transition-all duration-200 text-xs sm:text-sm font-black uppercase tracking-widest uppercase ${isActive ? style.active : style.inactive}`}>
                     <span>{statusDisplayNames[status]}</span>
                     <span className={`ml-0 sm:ml-2 mt-1 sm:mt-0 px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs ${isActive ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-600'}`}>{counts[status]}</span>
                   </button>
                 );
               })}
             </div>
-            <button onClick={onExport} className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-200 font-medium text-sm transition-colors">
+            <button onClick={onExport} className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-200 font-black text-xs transition-colors uppercase tracking-widest uppercase">
               <Icons.Download className="w-4 h-4" /><span>Excel</span>
             </button>
           </div>
@@ -1079,14 +1424,14 @@
         <div className="pt-2">
           <div className="bg-white p-4 rounded-xl shadow-sm flex flex-col md:flex-row items-center gap-3 border border-gray-100">
             <div className="relative flex-grow w-full">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icons.Search className="h-5 w-5 text-gray-400" /></div>
-                <input type="search" value={internalFilters.term} onChange={handleTermChange} className="block w-full rounded-lg border border-gray-300 bg-gray-50 text-gray-900 pl-10 p-2.5 focus:border-blue-500 focus:ring-blue-500 sm:text-sm" placeholder="Ara (EBYS No, Başlık, Açıklama...)" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none uppercase font-black"><Icons.Search className="h-5 w-5 text-gray-400" /></div>
+                <input type="search" value={internalFilters.term} onChange={handleTermChange} className="block w-full rounded-lg border border-gray-300 bg-gray-50 text-gray-900 pl-10 p-2.5 focus:border-blue-500 focus:ring-blue-500 sm:text-sm uppercase font-black tracking-widest placeholder-gray-400" placeholder="Ara (EBYS No, Başlık, Açıklama...)" />
             </div>
-            <select value={internalFilters.type} onChange={handleTypeChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            <select value={internalFilters.type} onChange={handleTypeChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
                 <option value="all">Tüm Talep Türleri</option>
                 {Object.values(DemandType).map(type => <option key={type} value={type}>{type}</option>)}
             </select>
-            <select value={internalFilters.requestingUnit} onChange={handleUnitChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            <select value={internalFilters.requestingUnit} onChange={handleUnitChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
                 <option value="all">Tüm Birimler</option>
                 {Object.values(RequestingUnit).map(unit => <option key={unit} value={unit}>{unit}</option>)}
             </select>
@@ -1107,7 +1452,7 @@
       const [processingDemands, setProcessingDemands] = useState(new Set());
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [demandToEdit, setDemandToEdit] = useState(null);
-      const [activeStatus, setActiveStatus] = useState(DemandStatus.YENI);
+      const [activeStatus, setActiveStatus] = useState(DemandStatus.ISLEMDE);
       const [filtersByStatus, setFiltersByStatus] = useState({
         [DemandStatus.YENI]: { type: 'all', term: '', requestingUnit: 'all' },
         [DemandStatus.ISLEMDE]: { type: 'all', term: '', requestingUnit: 'all' },
@@ -1185,19 +1530,18 @@
         const originalDemands = [...demands];
         const isEditing = !!demandData.id;
         let optimisticDemand;
-        const { ogmDriveAttachmentName, ...restOfData } = demandData;
+        const { checklistItems, ...restOfData } = demandData;
 
         if (isEditing) {
           const existingDemand = originalDemands.find(d => d.id === restOfData.id);
           if (!existingDemand) { showToast("Güncellenecek talep bulunamadı.", "error"); return; }
           optimisticDemand = { ...existingDemand, ...restOfData };
+          if (checklistItems && checklistItems.length > 0) {
+            optimisticDemand.progressHistory = [...optimisticDemand.progressHistory, ...checklistItems];
+          }
         } else {
           const now = new Date();
-          const progressHistory = [];
-          if (ogmDriveAttachmentName) {
-            const formatDateTime = (date) => { const pad = (num) => num.toString().padStart(2, '0'); return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`; };
-            progressHistory.push({ date: now.toISOString(), description: `Talep Oluşturuldu Talep Eki Adı: ${ogmDriveAttachmentName} Talep Oluşturma Tarihi: ${formatDateTime(now)}`, isSupportNote: false });
-          }
+          const progressHistory = checklistItems || [];
           optimisticDemand = { ...restOfData, id: Date.now(), createdAt: now.toISOString(), progressHistory, attachments: [] };
         }
 
@@ -1280,6 +1624,7 @@
 
       const handleUpdateDemandFromModal = (updatedDemand) => {
         setDemands(prev => prev.map(d => d.id === updatedDemand.id ? updatedDemand : d));
+        setSelectedDemandForProgress(updatedDemand);
         api.saveDemand(updatedDemand).catch(err => console.error("Okuma durumu kaydedilemedi", err));
       };
       
@@ -1352,9 +1697,9 @@
                     let ebysDate, createdAt;
                     if (talepTarihi instanceof Date && !isNaN(talepTarihi.getTime())) { ebysDate = talepTarihi.toISOString(); createdAt = talepTarihi.toISOString(); }
                     else { ebysDate = 'N/A'; createdAt = new Date().toISOString(); }
-                    const requestingUnit = Object.values(RequestingUnit).find(u => u.toUpperCase() === talepKismi.toUpperCase()) || talepKismi;
+                    const requestingUnit = Object.values(RequestingUnit).find(u => u.toUpperCase() === (talepKismi ? talepKismi.toUpperCase() : '')) || talepKismi;
                     const normalizeTypeString = (str) => str.toUpperCase().replace(/[\s()]/g, '');
-                    const type = Object.values(DemandType).find(t => normalizeTypeString(t) === normalizeTypeString(talepTuru)) || DemandType.MALZEME;
+                    const type = Object.values(DemandType).find(t => normalizeTypeString(t) === normalizeTypeString(talepTuru || '')) || DemandType.MALZEME;
                     const progressHistory = []; const baseDate = new Date(); let dateOffset = 0;
                     if (akisNotu) akisNotu.split('\n').reverse().forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim().toLocaleUpperCase('tr-TR'), isSupportNote: false }); });
                     if (destekNotu) { const supportPerson = supportPersonMap[destekPersonelKisaltma] || destekPersonelKisaltma || 'Belirtilmemiş'; destekNotu.split('\n').forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim().toLocaleUpperCase('tr-TR'), isSupportNote: true, supportPerson }); }); }
@@ -1364,7 +1709,7 @@
                 await api.batchSaveDemands(mappedDemands);
                 await refreshDemands();
                 alert(`${mappedDemands.length} adet talep başarıyla yüklendi.`);
-            } catch (error) { const errorMessage = error.message || "Hata oluştu."; console.error("Excel hatası:", errorMessage); setError(`Veri yüklenemedi: ${errorMessage}`); alert(`Hata: ${errorMessage}`);
+            } catch (error) { const errorMessage = error.message || "Hata oluştu."; console.error("Excel hatası:", errorMessage); setError(`Veriler yüklenemedi: ${errorMessage}`); alert(`Hata: ${errorMessage}`);
             } finally { setLoading(false); }
         };
         reader.onerror = (error) => { console.error("Dosya okunurken hata:", error); alert("Dosya okuma hatası."); }
@@ -1383,7 +1728,12 @@
       const getFilteredDemandsForStatus = (status) => {
         const statusFilters = filtersByStatus[status];
         return demands
-          .filter(d => d.status === status)
+          .filter(d => {
+            if (status === DemandStatus.ISLEMDE) {
+              return d.status === DemandStatus.ISLEMDE || d.status === DemandStatus.YENI;
+            }
+            return d.status === status;
+          })
           .filter(d => statusFilters.type === 'all' || d.type === statusFilters.type)
           .filter(d => statusFilters.requestingUnit === 'all' || (d.requestingUnit || '').includes(statusFilters.requestingUnit))
           .filter(d => {
@@ -1398,16 +1748,28 @@
           });
       };
 
+      const calculateOpenDays = (ebysDate) => {
+        if (!ebysDate || ebysDate === 'N/A') return null;
+        const start = new Date(ebysDate);
+        const today = new Date();
+        const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        return diff >= 0 ? diff : 0;
+      };
+
       const demandsForBoard = getFilteredDemandsForStatus(activeStatus).sort((a, b) => {
           const aReminder = hasActiveReminder(a);
           const bReminder = hasActiveReminder(b);
           if (aReminder && !bReminder) return -1;
           if (!aReminder && bReminder) return 1;
-          return priorityOrder[b.priority] - priorityOrder[a.priority];
+          
+          // EBYS tarihine göre sıralama
+          const dateA = a.ebysDate === 'N/A' ? 0 : new Date(a.ebysDate).getTime();
+          const dateB = b.ebysDate === 'N/A' ? 0 : new Date(b.ebysDate).getTime();
+          return dateA - dateB;
       });
 
       const statusCounts = {
-        [DemandStatus.YENI]: getFilteredDemandsForStatus(DemandStatus.YENI).length,
+        [DemandStatus.YENI]: 0, // Gösterilmeyecek
         [DemandStatus.ISLEMDE]: getFilteredDemandsForStatus(DemandStatus.ISLEMDE).length,
         [DemandStatus.TAMAMLANDI]: getFilteredDemandsForStatus(DemandStatus.TAMAMLANDI).length,
       };
@@ -1415,7 +1777,7 @@
       // EXCEL EXPORT HELPERS (HTML BASED FOR STYLING)
       const exportToExcelHTML = (filename, rows, titleRow = null) => {
             let html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
-            html += '<head><meta http-equiv="content-type" content="text/plain; charset=UTF-8"/></head><body>';
+            html += '<head><meta http-equiv="content-type" content="text/plain; charset=UTF-8"/><style>td { mso-number-format:"\\@"; white-space: normal; word-wrap: break-word; vertical-align: middle; }</style></head><body>';
             html += '<table border="1" style="border-collapse: collapse; width: 100%; font-family: Calibri;">';
             
             // Add Special Title Row if exists
@@ -1434,14 +1796,14 @@
             rows.slice(1).forEach(row => {
                 html += '<tr>';
                 row.forEach((cell, index) => {
-                    let style = "border: 1px solid #000000; padding: 5px; vertical-align: middle;";
-                    if ([0, 2, 3, 4, 5].includes(index)) { 
+                    let style = "border: 1px solid #000000; padding: 5px;";
+                    if ([0, 2, 3, 4, 5, 6].includes(index)) { 
                         style += " text-align: center;";
                     } else {
                         style += " text-align: left;";
                     }
-                    if (index === 6) {
-                        style += " white-space: pre-wrap;"; 
+                    if (index === 7 || index === 8) {
+                        style += " white-space: normal; mso-data-placement:same-cell;"; 
                     }
                     html += `<td style="${style}">${cell || ''}</td>`;
                 });
@@ -1468,23 +1830,73 @@
             return dateA - dateB;
         });
 
-        const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AKIŞ NOTLARI'];
+        const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AÇIK TALEP SÜRESİ (GÜN)', 'AKIŞ NOTLARI', 'KALAN İŞLER / MİKTARLAR'];
         
         const data = sortedForExcel.map((d, index) => {
+          const checklistHistoryItems = d.progressHistory.filter(p => p && p.description && p.isKalanIsler && !p.description.includes('(SİSTEM NOTU)'));
+          
+          let currentTotalLength = 0;
           const allNotes = d.progressHistory
-            .filter(p => !p.description.includes('(SİSTEM NOTU)'))
+            .filter(p => p && p.description && !p.description.includes('(SİSTEM NOTU)') && !p.isKalanIsler)
             .map(p => {
                 const date = new Date(p.date).toLocaleDateString('tr-TR');
-                let desc = p.description.toLocaleUpperCase('tr-TR'); // Force Uppercase
+                let desc = p.description.toLocaleUpperCase('tr-TR');
                 if (p.isSupportNote) {
                     desc = `(DESTEK: ${p.supportPerson ? p.supportPerson.toLocaleUpperCase('tr-TR') : 'BELIRSIZ'}) ${desc}`;
                 }
+                const fullText = `${date}: ${desc}`;
+                
+                // Bölme kuralı: 200 karakteri geçtiğinde bir break ekle (alt satıra devam ettir)
+                if (currentTotalLength > 0 && currentTotalLength + fullText.length > 200) {
+                    currentTotalLength = fullText.length;
+                    return `<br/><br/>${fullText}`;
+                }
+                currentTotalLength += fullText.length;
                 return `${date}: ${desc}`;
             })
-            .join('<br style="mso-data-placement:same-cell;" />'); 
+            .join('<br style="mso-data-placement:same-cell;" />');
 
-          const ebysTarihi = d.ebysDate === 'N/A' ? 'N/A' : new Date(d.ebysDate).toLocaleDateString('tr-TR');
-          return [index + 1, d.title, d.requestingUnit, d.type, d.ebysNumber, ebysTarihi, allNotes];
+          const kalanItemsRaw = checklistHistoryItems;
+          let kalanIslerText = "";
+          
+          if (kalanItemsRaw && kalanItemsRaw.length > 5) {
+            const lastStates = {};
+            kalanItemsRaw.forEach(p => {
+              const parts = p.description.split('|');
+              if (parts.length >= 4) {
+                const name = parts[0].trim();
+                const talep = parseInt(parts[1].split(':')[1]) || 0;
+                const gelen = parseInt(parts[2].split(':')[1]) || 0;
+                const kalan = parseInt(parts[3].split(':')[1]) || 0;
+                lastStates[name] = { talep, gelen, kalan };
+              }
+            });
+
+            const uniqueList = Object.values(lastStates);
+            const total = uniqueList.length;
+            let fullyReceived = 0;
+            let partialReceived = 0;
+            let notReceived = 0;
+
+            uniqueList.forEach(item => {
+              if (item.kalan === 0) fullyReceived++;
+              else if (item.gelen > 0) partialReceived++;
+              else notReceived++;
+            });
+            
+            kalanIslerText = `${total} ADET ÜRÜNDEN ${fullyReceived} TANESİ TAMAMEN GELMİŞ, ${partialReceived} TANESİ KISMİ TAMAMLANMIŞ, ${notReceived} ADET HİÇ TAMAMLANMAMIŞTIR`;
+          } else if (kalanItemsRaw) {
+            kalanIslerText = kalanItemsRaw.map(p => {
+                const date = new Date(p.date).toLocaleDateString('tr-TR');
+                return `${date}: ${p.description.toLocaleUpperCase('tr-TR')}`;
+            }).join('<br style="mso-data-placement:same-cell;" />');
+          }
+
+          const ebysTarihi = d.ebysDate === 'N/A' ? 'N/A' : d.ebysDate.split('T')[0].split('-').reverse().join('.');
+          const acikSure = calculateOpenDays(d.ebysDate);
+          const acikSureMetin = acikSure !== null ? `${acikSure}` : '';
+          
+          return [index + 1, (d.title || '').toLocaleUpperCase('tr-TR'), (d.requestingUnit || '').toLocaleUpperCase('tr-TR'), d.type, d.ebysNumber, ebysTarihi, acikSureMetin, allNotes, kalanIslerText];
         });
 
         let titleRow = null;
@@ -1537,8 +1949,9 @@
               }
 
               const relevantProgress = d.progressHistory.filter(i => {
+                  if (!i || !i.description) return false;
                   const itemDate = new Date(i.date);
-                  return !i.isCompletionNote && !i.description.includes('(SİSTEM NOTU)') && itemDate >= start && itemDate <= end;
+                  return !i.isCompletionNote && !i.description.includes('(SİSTEM NOTU)') && itemDate >= start && itemDate <= end && !i.isKalanIsler;
               });
               
               if (relevantProgress.length > 0) {
@@ -1595,15 +2008,15 @@
                              <FilterControls counts={statusCounts} activeStatus={activeStatus} onStatusChange={handleStatusChange} onExport={handleExportToExcel} />
                              
                              <div className="flex justify-end mt-2">
-                                 <button onClick={openReportModal} className="text-sm bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center gap-2">
-                                     <span className="font-semibold">Akış Raporu İndir (Excel)</span>
+                                 <button onClick={openReportModal} className="text-sm bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center gap-2 uppercase font-black tracking-widest uppercase">
+                                     <span className="font-semibold font-black tracking-widest">Akış Raporu İndir (Excel)</span>
                                  </button>
                              </div>
 
                              <TypeFilterControls filters={filtersByStatus[activeStatus]} onSearch={handleFilterChange} />
                          </div>
                          
-                         {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200">Hata: {error}</div>}
+                         {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200 uppercase font-black tracking-widest uppercase">Hata: {error}</div>}
                          
                          {!error && (
                             <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} currentTime={currentTime} />
@@ -1616,6 +2029,7 @@
                     isOpen={isProgressModalOpen} 
                     onClose={handleCloseProgressModal} 
                     demand={selectedDemandForProgress} 
+                    currentTime={currentTime}
                     onAddProgressItems={handleAddProgressItems} 
                     onEditDemand={handleUpdateDemandFromModal} 
                     onCompleteDemand={handleCompleteDemand} 
@@ -1628,20 +2042,20 @@
                 {isReportModalOpen && (
                     <div className="fixed inset-0 bg-black/60 z-[60] flex justify-center items-center p-4 backdrop-blur-sm" onClick={() => setIsReportModalOpen(false)}>
                         <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-900" onClick={e => e.stopPropagation()}>
-                            <h3 className="text-lg font-bold mb-4 text-gray-900">Akış Raporu Tarih Aralığı</h3>
+                            <h3 className="text-lg font-bold mb-4 text-gray-900 uppercase font-black tracking-tighter uppercase">Akış Raporu Tarih Aralığı</h3>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Başlangıç</label>
+                                    <label className="block text-sm font-medium text-gray-700 uppercase font-black tracking-widest uppercase">Başlangıç</label>
                                     <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Bitiş</label>
+                                    <label className="block text-sm font-medium text-gray-700 uppercase font-black tracking-widest uppercase">Bitiş</label>
                                     <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/>
                                 </div>
                             </div>
                             <div className="mt-6 flex justify-end gap-3">
-                                <button onClick={() => setIsReportModalOpen(false)} className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium">İptal</button>
-                                <button onClick={handleGenerateFlowReport} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm">Rapor Oluştur</button>
+                                <button onClick={() => setIsReportModalOpen(false)} className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium uppercase font-black tracking-widest uppercase">İptal</button>
+                                <button onClick={handleGenerateFlowReport} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm uppercase font-black tracking-widest uppercase">Rapor Oluştur</button>
                             </div>
                         </div>
                     </div>
