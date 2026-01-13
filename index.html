@@ -80,9 +80,8 @@
     }
 
     body {
-        /* Sayfa taşmasını engelle */
         overflow-x: hidden; 
-        background-color: #1A4D2E; /* Ensure brand-bg covers everything */
+        background-color: #1A4D2E; 
     }
 
     body.modal-open {
@@ -93,6 +92,23 @@
         min-height: 100vh;
         display: flex;
         flex-direction: column;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Modal Genişlik Düzeltmesi - Layout Fix */
+    .modal-container-wide {
+      max-width: 95% !important;
+      width: 1600px !important;
+    }
+    
+    /* Green screen fix - ensuring content is visible */
+    .app-container-visible {
+      display: block !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      position: relative;
+      z-index: 50 !important;
     }
   </style>
 <script type="importmap">
@@ -138,7 +154,7 @@
       C_650: 'C-650',
       HANGAR: 'HANGAR',
       HANGAR_YER_DESTEK: 'HANGAR YER DESTEK',
-      PIYASA_MALZEME: 'PİYASA MALZEME-TÜM BİRİMLER',
+      PIYASA_MALZEME: 'PİYASA MALZEME-TÜM BİRİRLER',
     };
 
     const DemandStatus = {
@@ -383,7 +399,7 @@
       
       // Checklist Side Panel State
       const [isChecklistOpen, setIsChecklistOpen] = useState(false);
-      const [checklistItems, setChecklistItems] = useState([{ name: '', requested: 0, received: 0 }]);
+      const [checklistItems, setChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
 
       // Date Picker Logic State
       const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -404,7 +420,6 @@
             setIsEditReminderDatePickerOpen(false);
             setIsChecklistOpen(false);
             
-            // Eğer demand varsa ve progressHistory içinde isKalanIsler öğeleri varsa yansıt
             if (demand && demand.progressHistory) {
               const uniqueItems = {};
               demand.progressHistory
@@ -417,19 +432,35 @@
                     const gelenParts = parts[2].split(':');
                     const talep = parseInt(talepParts[1]) || 0;
                     const gelen = parseInt(gelenParts[1]) || 0;
-                    // En güncel miktar en son girilendir
-                    uniqueItems[name] = { name, requested: talep, received: gelen };
+                    
+                    let partNo = "";
+                    let serialNo = "";
+                    parts.forEach(p => {
+                      const sp = p.trim();
+                      if (sp.startsWith('PN:')) partNo = sp.replace('PN:', '').trim();
+                      if (sp.startsWith('SN:')) serialNo = sp.replace('SN:', '').trim();
+                    });
+
+                    uniqueItems[name] = { name, partNo, serialNo, requested: talep, received: gelen, checked: false };
                   }
                 });
               
               const existingItems = Object.values(uniqueItems);
               if (existingItems.length > 0) {
+                // Gelmeyenleri (received < requested) kırmızı yapıp üste topla
+                existingItems.sort((a, b) => {
+                   const aIncomplete = (a.requested - a.received) > 0;
+                   const bIncomplete = (b.requested - b.received) > 0;
+                   if (aIncomplete && !bIncomplete) return -1;
+                   if (!aIncomplete && bIncomplete) return 1;
+                   return 0;
+                });
                 setChecklistItems(existingItems);
               } else {
-                setChecklistItems([{ name: '', requested: 0, received: 0 }]);
+                setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
               }
             } else {
-              setChecklistItems([{ name: '', requested: 0, received: 0 }]);
+              setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
             }
 
             document.body.classList.add('modal-open');
@@ -469,8 +500,13 @@
               reminderDate: editingItem.isReminder && editingItem.reminderDate ? new Date(editingItem.reminderDate).toISOString() : undefined,
               reminderRead: editingItem.isReminder ? (editingItem.reminderDate === originalItem.reminderDate ? originalItem.reminderRead : false) : false
           };
-          onEditProgressItem(demand.id, editingItem.index, updatedItem, originalItem); // Pass original for logging
+          onEditProgressItem(demand.id, editingItem.index, updatedItem, originalItem);
           setEditingItem(null);
+      };
+
+      const handleEditItemDescriptionChange = (e) => {
+        const val = e.target.value.toLocaleUpperCase('tr-TR');
+        setEditingItem(prev => ({...prev, description: val}));
       };
 
       const parseProgressText = (text, isSupport, supportPerson, dateOverride, isChecklist = false) => {
@@ -509,12 +545,29 @@
       };
 
       const handleAddChecklistRow = () => {
-        setChecklistItems([...checklistItems, { name: '', requested: 0, received: 0 }]);
+        setChecklistItems([...checklistItems, { name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
       };
 
       const handleUpdateChecklistItem = (index, field, value) => {
         const newItems = [...checklistItems];
         newItems[index][field] = value;
+        
+        if (field === 'name') {
+          const text = value;
+          const pnRegex = /(?:-?\s*(?:P\/?N|PN)[:\s]*|P\/?N[:\s]+)([A-Z0-9\-/.]+)/i;
+          const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-\d{4,}-?\d*)/);
+          if (pnMatch) {
+              newItems[index].partNo = (pnMatch[1] || pnMatch[0]).trim().toLocaleUpperCase('tr-TR');
+          }
+          const snRegex = /(?:-?\s*(?:S\/?N|SN)[:\s]*|S\/?N[:\s]+)([A-Z0-9\-/.]+)/i;
+          const snMatch = text.match(snRegex);
+          if (snMatch) {
+              newItems[index].serialNo = snMatch[1].trim().toLocaleUpperCase('tr-TR');
+          }
+        }
+        if (field === 'serialNo') {
+            newItems[index].serialNo = value.toLocaleUpperCase('tr-TR');
+        }
         setChecklistItems(newItems);
       };
 
@@ -522,11 +575,8 @@
         const itemsWithNames = checklistItems.filter(i => i.name.trim() !== '');
         if (itemsWithNames.length === 0) return alert('Lütfen malzeme adı giriniz.');
         
-        // Checklist değişikliklerini akış notu üretmeden sadece ham veri olarak kaydet
-        // Kalıcı silme davranışını desteklemek için mevcut isKalanIsler öğelerini temizleyip yenilerini set ediyoruz
         const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
         
-        // Akış notu için sadece değişen kalemleri bul
         const flowNotes = [];
         itemsWithNames.forEach(newItem => {
             const oldItemEntry = demand.progressHistory.find(h => h.isKalanIsler && h.description.startsWith(newItem.name.toLocaleUpperCase('tr-TR')));
@@ -550,7 +600,7 @@
 
         const newChecklistHistory = itemsWithNames.map(item => ({
           date: new Date().toISOString(),
-          description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received}`,
+          description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${(item.partNo || '').toLocaleUpperCase('tr-TR')} | SN:${(item.serialNo || '').toLocaleUpperCase('tr-TR')}`,
           isKalanIsler: true
         }));
 
@@ -561,41 +611,58 @@
         
         onEditDemand(updatedDemand);
         setIsChecklistOpen(false);
-        setChecklistItems([{ name: '', requested: 0, received: 0 }]);
+        setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
       };
 
       const handleChecklistRealDelete = (idx) => {
           if (window.confirm('Emin misiniz?')) {
               const updatedChecklistItems = checklistItems.filter((_, i) => i !== idx);
               setChecklistItems(updatedChecklistItems);
-              
-              // Gerçek Silme Davranışı: Güncel listeyi backend'e yansıtıyoruz
               const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
               const newChecklistHistory = updatedChecklistItems.map(item => ({
                 date: new Date().toISOString(),
-                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received}`,
+                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${item.partNo} | SN:${item.serialNo}`,
                 isKalanIsler: true
               }));
-
-              const updatedDemand = {
-                  ...demand,
-                  progressHistory: [...otherHistory, ...newChecklistHistory]
-              };
-              
+              const updatedDemand = { ...demand, progressHistory: [...otherHistory, ...newChecklistHistory] };
               onEditDemand(updatedDemand);
-              alert('Ürün silindi');
           }
       };
 
-      // Checklist Word olarak indir (HTML Blob method)
+      const handleBulkDeleteChecklist = () => {
+          if (window.confirm('Seçilenleri silmek istediğinize emin misiniz?')) {
+              const updatedChecklistItems = checklistItems.filter(item => !item.checked);
+              setChecklistItems(updatedChecklistItems);
+              const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
+              const newChecklistHistory = updatedChecklistItems.map(item => ({
+                date: new Date().toISOString(),
+                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${item.partNo} | SN:${item.serialNo}`,
+                isKalanIsler: true
+              }));
+              const updatedDemand = { ...demand, progressHistory: [...otherHistory, ...newChecklistHistory] };
+              onEditDemand(updatedDemand);
+          }
+      };
+
+      const anyChecked = checklistItems.some(item => item.checked);
+
       const handleDownloadChecklistAsWord = () => {
+          const sortedItems = [...checklistItems].sort((a, b) => {
+              const aIncomplete = (a.requested - a.received) > 0;
+              const bIncomplete = (b.requested - b.received) > 0;
+              if (aIncomplete && !bIncomplete) return -1;
+              if (!aIncomplete && bIncomplete) return 1;
+              return 0;
+          });
+
           const tableHtml = `
-            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+            <html xmlns:o="urn:schemas-microsoft-com:office:excel">
             <head><meta charset='utf-8'><title>Checklist</title>
             <style>
                 table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid black; padding: 8px; text-align: left; font-family: Arial; }
                 th { background-color: #1A4D2E; color: white; font-weight: bold; }
+                .red-row { background-color: #ffebeb; color: red; font-weight: bold; }
             </style>
             </head>
             <body>
@@ -605,21 +672,30 @@
                 <table>
                     <thead>
                         <tr>
+                            <th style="background-color: #1A4D2E; color: white;">SIRA</th>
                             <th style="background-color: #1A4D2E; color: white;">MALZEME ADI / TANIMI</th>
+                            <th style="background-color: #1A4D2E; color: white;">PARÇA NO</th>
+                            <th style="background-color: #1A4D2E; color: white;">SERİ NO</th>
                             <th style="background-color: #1A4D2E; color: white;">TALEP ADET</th>
                             <th style="background-color: #1A4D2E; color: white;">GELEN ADET</th>
                             <th style="background-color: #1A4D2E; color: white;">KALAN ADET</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${checklistItems.map(item => `
-                            <tr>
+                        ${sortedItems.map((item, idx) => {
+                            const isRed = (item.requested - item.received > 0);
+                            return `
+                            <tr class="${isRed ? 'red-row' : ''}">
+                                <td style="text-align: center;">${idx + 1}</td>
                                 <td>${item.name.toLocaleUpperCase('tr-TR')}</td>
+                                <td>${(item.partNo || '').toLocaleUpperCase('tr-TR')}</td>
+                                <td>${(item.serialNo || '').toLocaleUpperCase('tr-TR')}</td>
                                 <td style="text-align: center;">${item.requested}</td>
                                 <td style="text-align: center;">${item.received}</td>
                                 <td style="text-align: center;">${item.requested - item.received}</td>
                             </tr>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
             </body>
@@ -638,7 +714,6 @@
       const resetOgmCloudForm = () => { setShowOgmCloudForm(false); setOgmCloudDidUpload(false); setOgmCloudAttachmentType(attachmentTypes[0]); setOgmCloudOtherAttachmentName(''); };
       
       const handleCloseModal = () => {
-        const now = new Date();
         const updatedHistory = demand.progressHistory.map(item => {
             if (item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead) {
                 const readDateStr = new Date().toLocaleString('tr-TR');
@@ -660,21 +735,6 @@
         setSelectedSupportPerson(''); setHasDeliveredDocument(false); setDocumentName(''); setEditingItem(null); resetOgmCloudForm(); onClose();
       };
 
-      const handleStartOgmCloudFlow = () => { window.open('https://bulut.ogm.gov.tr/TALEPLER', '_blank', 'noopener,noreferrer'); setShowOgmCloudForm(true); };
-      
-      const handleOgmCloudSave = () => {
-        const now = new Date();
-        const dateStr = `${now.getDate().toString().padStart(2,'0')}.${(now.getMonth()+1).toString().padStart(2,'0')}.${now.getFullYear()} ${now.getHours()}:${now.getMinutes()}`;
-        const newProgressItems = [{ date: now.toISOString(), description: `TALEP EK OLUŞTURMA TARİHİ: ${dateStr}`, isSupportNote: false, }];
-        if (ogmCloudDidUpload) {
-            let attachmentDesc = ogmCloudAttachmentType;
-            if (ogmCloudAttachmentType === 'Diğer' && ogmCloudOtherAttachmentName.trim()) attachmentDesc = ogmCloudOtherAttachmentName.trim();
-            newProgressItems.push({ date: now.toISOString(), description: `TALEP EKİ YÜKLENDİ: ${attachmentDesc}`.toLocaleUpperCase('tr-TR'), isSupportNote: false });
-        }
-        onAddProgressItems(demand.id, newProgressItems);
-        resetOgmCloudForm();
-      };
-
       const handleStartCompletion = () => { setIsConfirmingCompletion(true); setCompletionDate(new Date().toISOString().split('T')[0]); };
       const handleConfirmCompletion = () => { if (completionDate) onCompleteDemand(demand.id, completionDate, completionNote.toLocaleUpperCase('tr-TR')); };
       
@@ -692,22 +752,36 @@
       };
 
       const progressHistoryWithMeta = demand.progressHistory.map((item, index) => ({ ...item, originalIndex: index, isEditable: true }));
-      // Filtreleme: Sistem notları ve ham checklist satırları akış listesinde gösterilmez
       const timelineItems = [...progressHistoryWithMeta].filter(item => !item.description.includes('(SİSTEM NOTU)') && !item.isKalanIsler);
       if (demand.ebysDate !== 'N/A') timelineItems.push({ date: demand.ebysDate, description: 'Talep Oluşturuldu', isSupportNote: false, isEditable: false, originalIndex: -1 });
       const timeline = timelineItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      // Date Picker Display String
       const customDateDisplay = new Date(customDate).toLocaleString('tr-TR', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute:'2-digit' });
+
+      const handleFlowNoteChange = (e) => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        const val = e.target.value.toLocaleUpperCase('tr-TR');
+        setNewProgressText(val);
+        requestAnimationFrame(() => {
+          if (e.target) e.target.setSelectionRange(start, end);
+        });
+      };
+
+      const sortedChecklistItemsForTable = [...checklistItems].sort((a, b) => {
+          const aIncomplete = (a.requested - a.received) > 0;
+          const bIncomplete = (b.requested - b.received) > 0;
+          if (aIncomplete && !bIncomplete) return -1;
+          if (!aIncomplete && bIncomplete) return 1;
+          return 0;
+      });
 
       return (
         <React.Fragment>
-        {/* Backdrop - Interaksiyon engellenmiş flu ekran */}
         <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] backdrop-blur-sm pointer-events-auto" onWheel={(e) => e.stopPropagation()}>
           <div className="flex justify-center items-center p-4 min-h-screen">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl flex flex-col h-[85vh] overflow-hidden transform transition-all text-gray-900" onClick={(e) => e.stopPropagation()}>
               
-              {/* Modal Header */}
               <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
                 <div className="flex-1 min-w-0 mr-4">
                   <div className="flex items-center gap-2 mb-1">
@@ -733,9 +807,7 @@
                 </div>
               </div>
 
-              {/* Main Content Body */}
               <div className="flex flex-1 overflow-hidden relative">
-                {/* Timeline Section */}
                 <div className="flex-grow overflow-y-auto p-6 bg-white scrollbar-thin scrollbar-thumb-gray-300">
                   {demand.attachments && demand.attachments.length > 0 && (
                       <div className="mb-6 flex justify-end">
@@ -746,7 +818,6 @@
                     )}
 
                   <div className="relative">
-                    {/* Dikey Çizgi */}
                     <div className="absolute top-0 bottom-0 left-[19px] w-0.5 bg-gray-200"></div>
 
                     <div className="space-y-6">
@@ -792,7 +863,7 @@
                                 
                                 {editingItem && editingItem.index === item.originalIndex ? (
                                   <div className="space-y-3">
-                                    <textarea value={editingItem.description} onChange={(e) => setEditingItem(prev => prev ? {...prev, description: e.target.value.toLocaleUpperCase('tr-TR')} : null)} className="w-full p-2 border rounded text-gray-900 uppercase tracking-tighter" rows={3}/>
+                                    <textarea value={editingItem.description} onChange={handleEditItemDescriptionChange} className="w-full p-2 border rounded text-gray-900 uppercase tracking-tighter" rows={3}/>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
                                         <div className="flex flex-col gap-2">
@@ -817,7 +888,7 @@
                                                     {isEditReminderDatePickerOpen && (
                                                         <div className="absolute top-full left-0 mt-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
                                                             <input type="datetime-local" value={editingItem.reminderDate} onChange={(e) => setEditingItem(prev => prev ? {...prev, reminderDate: e.target.value} : null)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
-                                                            <button onClick={() => setIsEditReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase tracking-widest">Uygula</button>
+                                                            <button onClick={() => setIsEditReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase font-black tracking-widest">Uygula</button>
                                                         </div>
                                                     )}
                                                 </div>
@@ -859,52 +930,68 @@
                   </div>
                 </div>
 
-                {/* Checklist Side Panel (TAM GENİŞLİK ÇALIŞAN OVERLAY) */}
+                {/* Checklist Side Panel */}
                 {isChecklistOpen && (
                   <div className="absolute inset-0 bg-white z-30 flex flex-col transform transition-transform animate-in slide-in-from-right duration-300">
                     <div className="p-4 bg-gray-50 border-b flex justify-between items-center flex-shrink-0 shadow-sm">
                       <h3 className="font-black text-green-800 flex items-center gap-2 text-xl uppercase tracking-widest"><Icons.ClipboardList className="w-7 h-7 text-green-700"/> Kalan İşler / Miktarlar Listesi</h3>
                       <div className="flex items-center gap-3">
+                         {anyChecked && <button onClick={handleBulkDeleteChecklist} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-black text-xs uppercase shadow-md tracking-widest"><Icons.Trash className="w-4 h-4"/> SEÇİLENLERİ SİL</button>}
                          <button onClick={handleDownloadChecklistAsWord} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-black text-xs uppercase shadow-md tracking-widest"><Icons.Download className="w-4 h-4"/> WORD OLARAK İNDİR</button>
                          <button onClick={() => setIsChecklistOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white border p-1.5 rounded-full transition-colors"><Icons.X className="w-6 h-6"/></button>
                       </div>
                     </div>
                     <div className="flex-grow overflow-y-auto p-10 bg-gray-100">
-                      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl border border-gray-300 overflow-hidden">
+                      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl border border-gray-300 overflow-hidden">
                         <table className="w-full border-collapse">
                            <thead>
                               <tr className="bg-[#1A4D2E] text-white">
+                                 <th className="px-4 py-4 text-center border border-green-800 w-12"><input type="checkbox" onChange={(e) => setChecklistItems(prev => prev.map(it => ({...it, checked: e.target.checked})))} /></th>
+                                 <th className="px-4 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-16">Sıra No</th>
                                  <th className="px-6 py-4 text-left font-black uppercase text-sm border border-green-800 tracking-wider">Malzeme Adı / Tanımı</th>
-                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-32">Talep Adet</th>
-                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-32">Gelen Adet</th>
-                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-32">Kalan Adet</th>
+                                 <th className="px-6 py-4 text-left font-black uppercase text-sm border border-green-800 tracking-wider w-40">Parça No</th>
+                                 <th className="px-6 py-4 text-left font-black uppercase text-sm border border-green-800 tracking-wider w-40">Seri No</th>
+                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-24">Talep</th>
+                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-24">Gelen</th>
+                                 <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-24">Kalan</th>
                                  <th className="px-6 py-4 text-center font-black uppercase text-sm border border-green-800 tracking-wider w-16">Sil</th>
                               </tr>
                            </thead>
                            <tbody className="divide-y divide-gray-200">
-                            {checklistItems.map((item, idx) => (
-                              <tr key={idx} className="hover:bg-green-50 transition-colors group">
-                                <td className="px-6 py-3 border-x">
-                                  <input type="text" value={item.name} onChange={(e) => handleUpdateChecklistItem(idx, 'name', e.target.value)} className="w-full border-none bg-transparent focus:ring-0 p-1 text-sm text-gray-900 font-bold placeholder-gray-300 uppercase tracking-tighter" placeholder="Malzeme adı..." />
-                                </td>
-                                <td className="px-6 py-3 border-x text-center">
-                                  <input type="number" value={item.requested} onChange={(e) => handleUpdateChecklistItem(idx, 'requested', parseInt(e.target.value) || 0)} className="w-24 border rounded bg-gray-50 p-2 text-center text-sm font-bold text-gray-900 focus:bg-white transition-colors" />
-                                </td>
-                                <td className="px-6 py-3 border-x text-center">
-                                  <input type="number" value={item.received} onChange={(e) => handleUpdateChecklistItem(idx, 'received', parseInt(e.target.value) || 0)} className="w-24 border rounded bg-gray-50 p-2 text-center text-sm font-bold text-gray-900 focus:bg-white transition-colors focus:ring-2 focus:ring-green-500" />
-                                </td>
-                                <td className="px-6 py-3 border-x text-center">
-                                  <span className={`text-sm font-black transition-colors ${item.requested - item.received > 0 ? 'text-red-600' : 'text-green-600'}`}>{item.requested - item.received}</span>
-                                </td>
-                                <td className="px-6 py-3 border-x text-center">
-                                   <button onClick={() => handleChecklistRealDelete(idx)} className="text-red-400 hover:text-red-600 transition-colors p-1"><Icons.Trash className="w-5 h-5 mx-auto"/></button>
-                                </td>
-                              </tr>
-                            ))}
+                            {sortedChecklistItemsForTable.map((item, idx) => {
+                              const isRed = (item.requested - item.received > 0);
+                              return (
+                                <tr key={idx} className={`transition-colors group ${isRed ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-green-50'}`}>
+                                  <td className="px-4 py-3 border-x text-center"><input type="checkbox" checked={item.checked} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'checked', e.target.checked)} /></td>
+                                  <td className="px-4 py-3 border-x text-center font-black text-xs text-gray-500">{idx + 1}</td>
+                                  <td className="px-6 py-3 border-x">
+                                    <input type="text" value={item.name} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'name', e.target.value)} className="w-full border-none bg-transparent focus:ring-0 p-1 text-sm text-gray-900 font-bold placeholder-gray-300 uppercase tracking-tighter" placeholder="Malzeme adı..." />
+                                  </td>
+                                  <td className="px-6 py-3 border-x">
+                                    <input type="text" value={item.partNo} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'partNo', e.target.value)} className="w-full border rounded border-gray-200 bg-white/50 px-2 py-1 text-xs text-gray-900 font-bold uppercase" placeholder="P/N..." />
+                                  </td>
+                                  <td className="px-6 py-3 border-x">
+                                    <input type="text" value={item.serialNo} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'serialNo', e.target.value)} className="w-full border rounded border-gray-200 bg-white/50 px-2 py-1 text-xs text-gray-900 font-bold uppercase" placeholder="S/N..." />
+                                  </td>
+                                  <td className="px-6 py-3 border-x text-center">
+                                    <input type="number" value={item.requested} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'requested', parseInt(e.target.value) || 0)} className="w-16 border rounded bg-gray-50 p-1 text-center text-xs font-bold text-gray-900 focus:bg-white transition-colors" />
+                                  </td>
+                                  <td className="px-6 py-3 border-x text-center">
+                                    <input type="number" value={item.received} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'received', parseInt(e.target.value) || 0)} className="w-16 border rounded bg-gray-50 p-1 text-center text-xs font-bold text-gray-900 focus:bg-white transition-colors focus:ring-2 focus:ring-green-500" />
+                                  </td>
+                                  <td className="px-6 py-3 border-x text-center">
+                                    <span className={`text-xs font-black transition-colors ${item.requested - item.received > 0 ? 'text-red-600' : 'text-green-600'}`}>{item.requested - item.received}</span>
+                                  </td>
+                                  <td className="px-6 py-3 border-x text-center">
+                                     <button onClick={() => handleChecklistRealDelete(checklistItems.findIndex(i => i === item))} className="text-red-400 hover:text-red-600 transition-colors p-1"><Icons.Trash className="w-5 h-5 mx-auto"/></button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                            </tbody>
                         </table>
-                        <button onClick={handleAddChecklistRow} className="w-full py-5 bg-white border-t border-dashed border-gray-300 text-gray-400 hover:text-green-600 hover:bg-green-50 transition-all text-sm font-black uppercase flex justify-center items-center gap-2 tracking-widest">
-                          <Icons.Plus className="w-5 h-5"/> Yeni Satır Ekle
+                        <button onClick={handleAddChecklistRow} className="w-full py-4 bg-white border-t border-dashed border-gray-300 text-gray-400 hover:text-green-600 hover:bg-green-50 transition-all text-xs font-black uppercase flex justify-center items-center gap-2 tracking-widest">
+                          <Icons.Plus className="w-4 h-4"/> Yeni Satır Ekle
                         </button>
                       </div>
                     </div>
@@ -947,7 +1034,6 @@
                       <div className="flex flex-col gap-3">
                          <div className="flex flex-wrap gap-3 items-center justify-between">
                             <div className="flex flex-wrap gap-3 items-center">
-                                {/* Improved Date Picker UX */}
                                 <div className="relative">
                                     <button onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
                                         <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
@@ -978,7 +1064,7 @@
                                         {isReminderDatePickerOpen && (
                                             <div className="absolute bottom-full left-0 mb-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[220px]">
                                                 <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
-                                                <button onClick={() => setIsReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 font-medium uppercase font-black tracking-widest">Uygula</button>
+                                                <button onClick={() => setIsReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase font-black tracking-widest">Uygula</button>
                                             </div>
                                         )}
                                     </div>
@@ -989,15 +1075,14 @@
                             </div>
                          </div>
 
-                         {/* Main Text Area & Buttons */}
                          <div className="flex gap-2 items-start">
                              <textarea 
                                 value={newProgressText} 
-                                onChange={(e) => setNewProgressText(e.target.value.toLocaleUpperCase('tr-TR'))} 
+                                onChange={handleFlowNoteChange}
                                 rows={2} 
                                 className="flex-grow rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm p-3 text-gray-900 uppercase font-bold tracking-tight" 
                                 placeholder="Akış notu giriniz..." 
-                              />
+                             />
                              <div className="flex flex-col gap-2 w-24 shrink-0">
                                  <button onClick={() => { handlePreview(); handleCloseModal(); }} disabled={!newProgressText.trim() && !hasDeliveredDocument} className="w-full py-1 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase font-black tracking-widest">
                                      Ekle
@@ -1023,17 +1108,22 @@
 
     // --- DemandModal (Yeni/Düzenle) ---
     const DemandModal = ({ isOpen, onClose, onSave, demandToEdit }) => {
-      const [formData, setFormData] = useState({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
+      const [formData, setFormData] = useState({ title: '', description: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
       const [checklistInput, setChecklistInput] = useState('');
       const [processedChecklist, setProcessedChecklist] = useState([]);
-      const [manualChecklistItems, setManualChecklistItems] = useState([{ name: '', requested: 0 }]);
+      const [manualChecklistItems, setManualChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
+      
+      const checklistFileRef = useRef(null);
+      const [checklistWorkbook, setChecklistWorkbook] = useState(null);
+      const [checklistSheets, setChecklistSheets] = useState([]);
+      const [checklistActiveSheet, setChecklistActiveSheet] = useState('');
+      const [checklistHeaders, setChecklistHeaders] = useState([]);
+      const [checklistMap, setChecklistMap] = useState({ name: '', pn: '', sn: '', qty: '' });
 
       useEffect(() => {
         if (demandToEdit) {
-          // EBYS tarihi input için yerel formatta hazırlanmalı
           let dateStr = '';
           if (demandToEdit.ebysDate && demandToEdit.ebysDate !== 'N/A') {
-              // Using ISO split to avoid 1-day drfit from timezone conversions
               dateStr = demandToEdit.ebysDate.split('T')[0];
           }
           
@@ -1050,13 +1140,15 @@
           });
           setChecklistInput('');
           setProcessedChecklist([]);
-          setManualChecklistItems([{ name: '', requested: 0 }]);
+          setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
         } else {
-          setFormData({ title: '', description: '', type: DemandType.EGITIM, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
+          setFormData({ title: '', description: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
           setChecklistInput('');
           setProcessedChecklist([]);
-          setManualChecklistItems([{ name: '', requested: 0 }]);
+          setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
         }
+        setChecklistWorkbook(null);
+        setChecklistActiveSheet('');
       }, [demandToEdit, isOpen]);
       
       const handleAddUnit = () => {
@@ -1070,27 +1162,132 @@
       };
 
       const handleAddManualRow = () => {
-        setManualChecklistItems([...manualChecklistItems, { name: '', requested: 0 }]);
+        setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }, ...manualChecklistItems]);
       };
 
       const handleUpdateManualRow = (index, field, value) => {
         const updated = [...manualChecklistItems];
         updated[index][field] = value;
+        
+        if (field === 'name') {
+            const text = value;
+            const pnRegex = /(?:-?\s*(?:P\/?N|PN)[:\s]*)([A-Z0-9\-/.]+)/i;
+            const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-\d{4,}-?\d*)/);
+            if (pnMatch) {
+                updated[index].partNo = (pnMatch[1] || pnMatch[0]).trim().toLocaleUpperCase('tr-TR');
+            }
+            const snRegex = /(?:-?\s*(?:S\/?N|SN)[:\s]*)([A-Z0-9\-/.]+)/i;
+            const snMatch = text.match(snRegex);
+            if (snMatch) {
+                updated[index].serialNo = snMatch[1].trim().toLocaleUpperCase('tr-TR');
+            }
+        }
+        if (field === 'serialNo' || field === 'partNo') {
+            updated[index][field] = value.toLocaleUpperCase('tr-TR');
+        }
         setManualChecklistItems(updated);
       };
 
+      const onChecklistExcelUpload = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+              const data = evt.target.result;
+              const wb = XLSX.read(data, { type: 'array' });
+              setChecklistWorkbook(wb);
+              setChecklistSheets(wb.SheetNames);
+              setChecklistActiveSheet('');
+              setChecklistHeaders([]);
+              setChecklistMap({ name: '', pn: '', sn: '', qty: '' });
+          };
+          reader.readAsArrayBuffer(file);
+      };
+
       const handleAktar = () => {
+        if (checklistWorkbook && checklistActiveSheet) {
+            if (!checklistMap.name || !checklistMap.pn || !checklistMap.qty) {
+                return alert("Lütfen Malzeme Adı, PN ve Miktar başlıklarını eşleştirin.");
+            }
+            const ws = checklistWorkbook.Sheets[checklistActiveSheet];
+            const data = XLSX.utils.sheet_to_json(ws);
+            const results = data.map(row => ({
+                name: String(row[checklistMap.name] || '').toLocaleUpperCase('tr-TR'),
+                partNo: String(row[checklistMap.pn] || '').toLocaleUpperCase('tr-TR'),
+                serialNo: checklistMap.sn ? String(row[checklistMap.sn] || '').toLocaleUpperCase('tr-TR') : '',
+                requested: parseInt(row[checklistMap.qty]) || 0
+            }));
+            setProcessedChecklist(results);
+            setChecklistWorkbook(null);
+            setChecklistActiveSheet('');
+            return;
+        }
+
         if (!checklistInput.trim()) return alert("Lütfen önce veri yapıştırın.");
         const lines = checklistInput.split('\n');
         const results = [];
         lines.forEach(line => {
-            const parts = line.split(/\t| {2,}/);
-            if (parts[0]) {
-                results.push({ name: parts[0].trim(), requested: parseInt(parts[1]) || 0 });
+            let text = line.trim();
+            if (!text) return;
+
+            let pn = "";
+            let sn = "";
+            const pnRegex = /(?:-?\s*(?:P\/?N|PN)[:\s]*)([A-Z0-9\-/.]+)/i;
+            const snRegex = /(?:-?\s*(?:S\/?N|SN)[:\s]*)([A-Z0-9\-/.]+)/i;
+            
+            const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-\d{4,}-?\d*)/);
+            if (pnMatch) {
+              pn = (pnMatch[1] || pnMatch[0]).trim().toLocaleUpperCase('tr-TR');
+              text = text.replace(pnMatch[0], "").trim();
+            }
+
+            const snMatch = text.match(snRegex);
+            if (snMatch) {
+              sn = snMatch[1].trim().toLocaleUpperCase('tr-TR');
+              text = text.replace(snMatch[0], "").trim();
+            }
+
+            let qty = 0;
+            const qtyRegex = /(\d+)\s*ADET/i;
+            const qtyMatch = text.match(qtyRegex);
+            if (qtyMatch) {
+                qty = parseInt(qtyMatch[1]);
+                text = text.replace(qtyMatch[0], "").trim();
+            } else {
+                const endQtyMatch = text.match(/(\d+)$/);
+                if (endQtyMatch) {
+                    qty = parseInt(endQtyMatch[1]);
+                    text = text.replace(/(\d+)$/, "").trim();
+                }
+            }
+
+            let name = text.replace(/\s+/g, " ").trim();
+            if (name || pn || sn) {
+                results.push({ name: name || "İsimsiz", partNo: pn, serialNo: sn, requested: qty });
             }
         });
         setProcessedChecklist(results);
         setChecklistInput('');
+      };
+
+      const handleDescriptionChange = (e) => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        const val = e.target.value.toLocaleUpperCase('tr-TR');
+        setFormData(prev => ({...prev, description: val}));
+        requestAnimationFrame(() => {
+          if (e.target) e.target.setSelectionRange(start, end);
+        });
+      };
+
+      const handleTitleChange = (e) => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        const val = e.target.value.toLocaleUpperCase('tr-TR');
+        setFormData(prev => ({...prev, title: val}));
+        requestAnimationFrame(() => {
+          if (e.target) e.target.setSelectionRange(start, end);
+        });
       };
 
       const handleSubmit = (e) => {
@@ -1100,12 +1297,10 @@
             return;
         }
 
-        // Must click AKTAR if input is not empty
         if (checklistInput.trim() && processedChecklist.length === 0) {
           return alert("Lütfen yapıştırılan veriyi AKTAR butonuna basarak checklist'e dönüştürün.");
         }
 
-        // Process Checklist
         let finalChecklistItems = [...processedChecklist];
         manualChecklistItems.forEach(item => {
             if (item.name.trim()) {
@@ -1115,7 +1310,7 @@
 
         const checklistProgressItems = finalChecklistItems.map(item => ({
             date: new Date().toISOString(),
-            description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: 0 | Kalan: ${item.requested}`,
+            description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: 0 | Kalan: ${item.requested} | PN:${(item.partNo || '').toLocaleUpperCase('tr-TR')} | SN:${(item.serialNo || '').toLocaleUpperCase('tr-TR')}`,
             isKalanIsler: true
         }));
 
@@ -1131,80 +1326,164 @@
 
       return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 backdrop-blur-sm pointer-events-auto" onWheel={e=>e.stopPropagation()}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 font-serif relative" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between mb-4 border-b pb-2">
+          <div className="bg-white rounded-lg shadow-xl w-full modal-container-wide p-8 font-serif relative" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between mb-6 border-b pb-4">
                 <h2 className="text-2xl font-semibold text-gray-900 uppercase font-black tracking-widest">{demandToEdit ? 'Düzenle' : 'Yeni Kayıt'}</h2>
                 <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
-                <input type="text" placeholder="Başlık" value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" required/>
-                <div className="grid grid-cols-2 gap-4"><input type="text" placeholder="EBYS No" value={formData.ebysNumber} onChange={e=>setFormData({...formData, ebysNumber:e.target.value})} className="border p-2 rounded text-gray-900 font-bold uppercase"/><input type="date" value={formData.ebysDate} onChange={e=>setFormData({...formData, ebysDate:e.target.value})} className="border p-2 rounded text-gray-900 uppercase"/></div>
-                <textarea placeholder="Açıklama" value={formData.description} onChange={e=>setFormData({...formData, description:e.target.value})} className="w-full border p-2 rounded text-gray-900 uppercase font-medium tracking-tight" rows={3}/>
+            <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
+                <div className="space-y-2">
+                   <label className="text-sm font-black text-gray-700 uppercase tracking-widest">Talep Başlığı</label>
+                   <input type="text" placeholder="Başlık" value={formData.title} onChange={handleTitleChange} className="w-full border p-3 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" required/>
+                </div>
                 
-                {/* Checklist Ekle Section */}
-                <div className="border border-purple-100 p-3 rounded-xl bg-purple-50/30">
-                    <label className="block text-sm font-black text-purple-700 mb-2 uppercase flex items-center gap-2 tracking-widest">
-                      <Icons.ClipboardList className="w-4 h-4"/> Checklist Ekle
+                <div className="grid grid-cols-2 gap-6">
+                   <div className="space-y-2">
+                      <label className="text-sm font-black text-gray-700 uppercase tracking-widest">EBYS No</label>
+                      <input type="text" placeholder="EBYS No" value={formData.ebysNumber} onChange={e=>setFormData({...formData, ebysNumber:e.target.value})} className="w-full border p-3 rounded text-gray-900 font-bold uppercase"/>
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-sm font-black text-gray-700 uppercase tracking-widest">EBYS Tarihi</label>
+                      <input type="date" value={formData.ebysDate} onChange={e=>setFormData({...formData, ebysDate:e.target.value})} className="w-full border p-3 rounded text-gray-900 uppercase"/>
+                   </div>
+                </div>
+
+                <div className="space-y-2">
+                   <label className="text-sm font-black text-gray-700 uppercase tracking-widest">Açıklama</label>
+                   <textarea placeholder="Açıklama" value={formData.description} onChange={handleDescriptionChange} className="w-full border p-3 rounded text-gray-900 uppercase font-medium tracking-tight" rows={3}/>
+                </div>
+                
+                <div className="border border-purple-100 p-4 rounded-xl bg-purple-50/30 space-y-4">
+                    <label className="block text-sm font-black text-purple-700 uppercase flex items-center gap-2 tracking-widest">
+                      <Icons.ClipboardList className="w-4 h-4"/> Checklist / PN & SN Ayrıştırma
                     </label>
                     <div className="space-y-3">
                         <div className="flex gap-2">
+                           <button type="button" onClick={() => checklistFileRef.current.click()} className="px-4 bg-green-600 text-white rounded-lg text-xs font-black uppercase shadow-md hover:bg-green-700 transition-all shrink-0 flex items-center gap-2">
+                               <Icons.CloudUp className="w-4 h-4"/> Excel Yükle
+                           </button>
+                           <input type="file" ref={checklistFileRef} onChange={onChecklistExcelUpload} className="hidden" accept=".xlsx, .xls" />
                            <textarea 
-                              placeholder="Excel'den kopyaladığınız veriyi buraya yapıştırın ve AKTAR'a basın..." 
+                              placeholder="Veya listeyi buraya yapıştırın (Malzeme - PN: XXX - SN: YYY Adet) ve AKTAR'a basın..." 
                               value={checklistInput}
                               onChange={(e) => setChecklistInput(e.target.value)}
-                              className="flex-grow border p-2 rounded-lg text-xs text-gray-900 bg-white min-h-[60px] uppercase font-bold"
+                              className="flex-grow border p-3 rounded-lg text-xs text-gray-900 bg-white min-h-[40px] uppercase font-bold"
                            />
-                           <button type="button" onClick={handleAktar} className="px-4 bg-purple-600 text-white rounded-lg text-xs font-black uppercase shadow-md hover:bg-purple-700 transition-all shrink-0">Aktar</button>
+                           <button type="button" onClick={handleAktar} className="px-6 bg-purple-600 text-white rounded-lg text-sm font-black uppercase shadow-md hover:bg-purple-700 transition-all shrink-0">Aktar</button>
                         </div>
+
+                        {checklistWorkbook && (
+                            <div className="bg-white border border-green-200 p-4 rounded-lg space-y-4 shadow-sm animate-in fade-in duration-300">
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-2 tracking-widest">1. Sayfa Seçin:</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {checklistSheets.map(s => (
+                                            <button key={s} type="button" onClick={() => {
+                                                setChecklistActiveSheet(s);
+                                                const ws = checklistWorkbook.Sheets[s];
+                                                const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                                                if (rows.length > 0) setChecklistHeaders(rows[0]);
+                                            }} className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-tighter border transition-all ${checklistActiveSheet === s ? 'bg-purple-600 border-purple-600 text-white shadow-md' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}>{s}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {checklistActiveSheet && (
+                                    <div className="space-y-3">
+                                        <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest">2. Başlık Eşleştirmesi Yapın:</label>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                            {[
+                                                { id: 'name', label: 'Malzeme Adı*' },
+                                                { id: 'pn', label: 'PN (Parça No)*' },
+                                                { id: 'sn', label: 'SN (Seri No)' },
+                                                { id: 'qty', label: 'Miktar (Adet)*' }
+                                            ].map(field => (
+                                                <div key={field.id} className="space-y-1">
+                                                    <span className="text-[9px] font-black text-purple-700 uppercase block">{field.label}</span>
+                                                    <select value={checklistMap[field.id]} onChange={e => setChecklistMap({...checklistMap, [field.id]: e.target.value})} className="w-full text-[10px] font-black border rounded p-1.5 bg-gray-50 uppercase focus:bg-white focus:ring-1 focus:ring-purple-500 transition-all">
+                                                        <option value="">Seçin...</option>
+                                                        {checklistHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         
                         {processedChecklist.length > 0 && (
-                          <div className="bg-white border rounded-lg p-2 max-h-40 overflow-y-auto">
-                             <div className="text-[10px] font-bold text-gray-400 mb-2 uppercase px-1 tracking-widest font-black">Önizleme ({processedChecklist.length} Kalem)</div>
-                             {processedChecklist.map((it, ix) => (
-                               <div key={ix} className="text-[11px] border-b py-1 flex justify-between px-1">
-                                  <span className="text-gray-700 font-black uppercase tracking-tight">{it.name}</span>
-                                  <span className="text-purple-600 font-black tracking-widest">{it.requested} Adet</span>
-                               </div>
-                             ))}
+                          <div className="bg-white border rounded-lg overflow-hidden shadow-inner max-h-48 overflow-y-auto">
+                             <table className="w-full text-[10px] table-fixed">
+                                <thead className="bg-gray-50 border-b text-gray-400 font-black uppercase tracking-widest sticky top-0">
+                                   <tr>
+                                      <th className="px-2 py-1 text-left w-1/2">Malzeme Adı</th>
+                                      <th className="px-2 py-1 text-left">P/N</th>
+                                      <th className="px-2 py-1 text-left">S/N</th>
+                                      <th className="px-2 py-1 text-right w-16">Adet</th>
+                                   </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                   {processedChecklist.map((it, ix) => (
+                                     <tr key={ix} className="hover:bg-purple-50 transition-colors">
+                                        <td className="px-2 py-1.5"><input type="text" value={it.name} onChange={(e) => { const n = [...processedChecklist]; n[ix].name = e.target.value.toLocaleUpperCase('tr-TR'); setProcessedChecklist(n); }} className="w-full bg-transparent border-none focus:ring-0 p-0 text-gray-700 font-black uppercase truncate" /></td>
+                                        <td className="px-2 py-1.5"><input type="text" value={it.partNo} onChange={(e) => { const n = [...processedChecklist]; n[ix].partNo = e.target.value.toLocaleUpperCase('tr-TR'); setProcessedChecklist(n); }} className="w-full bg-transparent border-none focus:ring-0 p-0 text-purple-600 font-black" /></td>
+                                        <td className="px-2 py-1.5"><input type="text" value={it.serialNo} onChange={(e) => { const n = [...processedChecklist]; n[ix].serialNo = e.target.value.toLocaleUpperCase('tr-TR'); setProcessedChecklist(n); }} className="w-full bg-transparent border-none focus:ring-0 p-0 text-purple-600 font-black" /></td>
+                                        <td className="px-2 py-1.5"><input type="number" value={it.requested} onChange={(e) => { const n = [...processedChecklist]; n[ix].requested = parseInt(e.target.value) || 0; setProcessedChecklist(n); }} className="w-full bg-transparent border-none focus:ring-0 p-0 text-right text-purple-800 font-black" /></td>
+                                     </tr>
+                                   ))}
+                                </tbody>
+                             </table>
                           </div>
                         )}
 
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest font-black">Manuel Ekle:</label>
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest font-black">Manuel Malzeme Ekle:</label>
                             {manualChecklistItems.map((item, idx) => (
                                 <div key={idx} className="flex gap-2">
-                                    <input type="text" placeholder="Malzeme Adı" value={item.name} onChange={e => handleUpdateManualRow(idx, 'name', e.target.value)} className="flex-grow border p-1 rounded-lg text-xs text-gray-900 uppercase font-bold tracking-tight" />
-                                    <input type="number" placeholder="Adet" value={item.requested} onChange={e => handleUpdateManualRow(idx, 'requested', parseInt(e.target.value) || 0)} className="w-20 border p-1 rounded-lg text-xs text-gray-900 font-bold" />
+                                    <input type="text" placeholder="Malzeme Adı" value={item.name} onChange={e => handleUpdateManualRow(idx, 'name', e.target.value)} className="flex-grow border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
+                                    <input type="text" placeholder="P/N" value={item.partNo} onChange={e => handleUpdateManualRow(idx, 'partNo', e.target.value)} className="w-40 border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
+                                    <input type="text" placeholder="S/N" value={item.serialNo} onChange={e => handleUpdateManualRow(idx, 'serialNo', e.target.value)} className="w-40 border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
+                                    <input type="number" placeholder="Adet" value={item.requested} onChange={e => handleUpdateManualRow(idx, 'requested', parseInt(e.target.value) || 0)} className="w-24 border p-2 rounded-lg text-xs text-gray-900 font-bold" />
                                 </div>
                             ))}
-                            <button type="button" onClick={handleAddManualRow} className="text-xs text-blue-600 font-black hover:underline uppercase tracking-tight font-black">+ Yeni Satır</button>
+                            <button type="button" onClick={handleAddManualRow} className="text-xs text-blue-600 font-black hover:underline uppercase tracking-tight">+ Yeni Satır Ekle</button>
                         </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold text-gray-700 uppercase tracking-widest font-black">Birimler</label>
-                        <div className="flex flex-wrap gap-1 p-2 border rounded min-h-[40px] bg-gray-50">
-                            {formData.requestingUnits.map(u=><span key={u} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded flex items-center gap-1 uppercase font-black">{u} <button type="button" onClick={()=>handleRemoveUnit(u)} className="hover:text-red-500"><Icons.XCircle className="w-3 h-3"/></button></span>)}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                    <div className="space-y-3">
+                        <label className="text-sm font-bold text-gray-700 uppercase tracking-widest font-black">Talep Eden Birimler</label>
+                        <div className="flex flex-wrap gap-2 p-3 border rounded min-h-[60px] bg-gray-50 shadow-inner">
+                            {formData.requestingUnits.map(u=><span key={u} className="bg-blue-100 text-blue-800 text-xs px-3 py-1.5 rounded-full flex items-center gap-2 uppercase font-black">{u} <button type="button" onClick={()=>handleRemoveUnit(u)} className="hover:text-red-500 transition-colors"><Icons.XCircle className="w-4 h-4"/></button></span>)}
+                            {formData.requestingUnits.length === 0 && <span className="text-xs text-gray-400 font-bold italic">En az bir birim seçin...</span>}
                         </div>
                         <div className="flex gap-2">
-                            <select value={formData.unitToAdd} onChange={e=>setFormData({...formData, unitToAdd:e.target.value})} className="border p-1 text-sm flex-grow text-gray-900 uppercase font-black">
-                                <option value="" disabled>Seç...</option>
+                            <select value={formData.unitToAdd} onChange={e=>setFormData({...formData, unitToAdd:e.target.value})} className="border p-2 text-sm flex-grow text-gray-900 uppercase font-black rounded-lg">
+                                <option value="" disabled>Birim Seçin...</option>
                                 {Object.values(RequestingUnit).filter(u=>!formData.requestingUnits.includes(u)).map(u=><option key={u} value={u}>{u}</option>)}
                             </select>
-                            <button type="button" onClick={handleAddUnit} className="bg-gray-200 px-3 rounded text-sm text-gray-900 hover:bg-gray-300 uppercase font-black tracking-widest">Ekle</button>
+                            <button type="button" onClick={handleAddUnit} className="bg-blue-50 border border-blue-200 px-6 rounded-lg text-sm text-blue-700 hover:bg-blue-100 transition-colors font-black tracking-widest uppercase shadow-sm min-w-[120px]">Birim Ekle</button>
                         </div>
                     </div>
-                    <div className="space-y-2">
-                        <select value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white uppercase font-black tracking-widest">{Object.values(DemandType).map(t=><option key={t} value={t}>{t}</option>)}</select>
-                        <select value={formData.priority} onChange={e=>setFormData({...formData, priority:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white uppercase font-black tracking-widest">{Object.values(DemandPriority).map(p=><option key={p} value={p}>{p}</option>)}</select>
-                        <select value={formData.status} onChange={e=>setFormData({...formData, status:e.target.value})} className="w-full border p-2 rounded text-gray-900 text-sm bg-white uppercase font-black tracking-widest">{Object.values(DemandStatus).filter(s => s !== DemandStatus.YENI).map(s=><option key={s} value={s}>{s}</option>)}</select>
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Talep Türü</label>
+                           <select value={formData.type} onChange={e=>setFormData({...formData, type:e.target.value})} className="w-full border p-3 rounded-lg text-gray-900 text-sm bg-white uppercase font-black tracking-widest shadow-sm">{Object.values(DemandType).map(t=><option key={t} value={t}>{t}</option>)}</select>
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Öncelik Durumu</label>
+                           <select value={formData.priority} onChange={e=>setFormData({...formData, priority:e.target.value})} className="w-full border p-3 rounded-lg text-gray-900 text-sm bg-white uppercase font-black tracking-widest shadow-sm">{Object.values(DemandPriority).map(p=><option key={p} value={p}>{p}</option>)}</select>
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">İşlem Durumu</label>
+                           <select value={formData.status} onChange={e=>setFormData({...formData, status:e.target.value})} className="w-full border p-3 rounded-lg text-gray-900 text-sm bg-white uppercase font-black tracking-widest shadow-sm">{Object.values(DemandStatus).filter(s => s !== DemandStatus.YENI).map(s=><option key={s} value={s}>{s}</option>)}</select>
+                        </div>
                     </div>
                 </div>
-                <div className="flex justify-end gap-3 pt-4 border-t">
-                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded text-gray-900 hover:bg-gray-300 transition-colors uppercase font-black tracking-widest">İptal</button>
-                    <button type="submit" className={`px-8 py-2 rounded font-black uppercase text-sm shadow-lg transition-all ${processedChecklist.length === 0 && checklistInput.trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>Kaydet</button>
+                <div className="flex justify-end gap-4 pt-8 border-t">
+                    <button type="button" onClick={onClose} className="px-6 py-3 bg-gray-100 rounded-xl text-gray-900 hover:bg-gray-200 transition-colors uppercase font-black tracking-widest border border-gray-200">İptal</button>
+                    <button type="submit" className={`px-12 py-3 rounded-xl font-black uppercase text-sm shadow-xl transition-all ${processedChecklist.length === 0 && checklistInput.trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 transform hover:-translate-y-0.5'}`}>KAYDET</button>
                 </div>
             </form>
           </div>
@@ -1243,11 +1522,8 @@
       };
 
       const openDays = calculateOpenDays(demand.ebysDate);
-
-      // EBYS tarihini backend'den geldiği HALİYLE göster (Shift logic yok, tam format)
       const ebysDateDisplay = demand.ebysDate === 'N/A' ? 'N/A' : demand.ebysDate.split('T')[0].split('-').reverse().join('.');
 
-      // Checklist durumunu render seviyesinde kontrol etme
       const isPartiallyCompleted = demand.progressHistory.some(h => {
           if (!h.isKalanIsler) return false;
           const parts = h.description.split('|');
@@ -1292,9 +1568,7 @@
               <div className="flex flex-col">
                 <span className="font-semibold text-gray-600 uppercase tracking-widest">EBYS NO: {demand.ebysNumber}</span>
                 {openDays !== null && (
-                  <span className="text-red-600 font-black uppercase mt-0.5 tracking-widest">
-                    {openDays} GÜNDÜR AÇIK
-                  </span>
+                  <span className="text-red-600 font-black uppercase mt-0.5 tracking-widest">{openDays} GÜNDÜR AÇIK</span>
                 )}
               </div>
               <span className="flex items-center gap-1.5 uppercase font-bold"><Icons.Calendar className="w-4 h-4" />{ebysDateDisplay}</span>
@@ -1323,7 +1597,7 @@
       const styles = statusStyles[status] || statusStyles[DemandStatus.YENI];
 
       return (
-        <div className="bg-gray-100 rounded-lg p-4 w-full flex flex-col min-h-[calc(100vh-260px)]">
+        <div className="bg-gray-100 rounded-lg p-4 w-full flex flex-col min-h-[calc(100vh-260px)] shadow-inner">
           <div className={`border-l-4 ${styles.border} pl-2 mb-4`}>
             <h3 className={`font-bold text-lg ${styles.text} flex items-center gap-2 uppercase tracking-widest`}>
               {statusDisplayNames[status] || status}
@@ -1388,14 +1662,14 @@
                 const isActive = activeStatus === status;
                 const style = statusStyles[status];
                 return (
-                  <button key={status} onClick={() => onStatusChange(status)} className={`flex flex-col sm:flex-row items-center justify-center py-2 px-1 rounded-lg transition-all duration-200 text-xs sm:text-sm font-black uppercase tracking-widest uppercase ${isActive ? style.active : style.inactive}`}>
+                  <button key={status} onClick={() => onStatusChange(status)} className={`flex flex-col sm:flex-row items-center justify-center py-2 px-1 rounded-lg transition-all duration-200 text-xs sm:text-sm font-black uppercase tracking-widest ${isActive ? style.active : style.inactive}`}>
                     <span>{statusDisplayNames[status]}</span>
                     <span className={`ml-0 sm:ml-2 mt-1 sm:mt-0 px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs ${isActive ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-600'}`}>{counts[status]}</span>
                   </button>
                 );
               })}
             </div>
-            <button onClick={onExport} className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-200 font-black text-xs transition-colors uppercase tracking-widest uppercase">
+            <button onClick={onExport} className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-200 font-black text-xs transition-colors uppercase tracking-widest">
               <Icons.Download className="w-4 h-4" /><span>Excel</span>
             </button>
           </div>
@@ -1462,10 +1736,8 @@
       const [selectedDemandForProgress, setSelectedDemandForProgress] = useState(null);
       const [deletionTarget, setDeletionTarget] = useState(null);
       const [toast, setToast] = useState(null);
-      // Global Time state for driving updates
       const [currentTime, setCurrentTime] = useState(new Date());
       
-      // Rapor Modal State'leri
       const [isReportModalOpen, setIsReportModalOpen] = useState(false);
       const [reportStartDate, setReportStartDate] = useState('');
       const [reportEndDate, setReportEndDate] = useState('');
@@ -1475,15 +1747,10 @@
       const metaTag = document.querySelector('meta[name="google-script-url"]');
       const SCRIPT_URL = metaTag ? metaTag.getAttribute('content') : '';
 
-      if (!SCRIPT_URL) {
-          console.error("Google Apps Script URL'si HTML meta etiketinde bulunamadı.");
-      }
-
-      // Time ticker effect to force re-renders and re-sorts for reminders
       useEffect(() => {
           const timer = setInterval(() => {
               setCurrentTime(new Date());
-          }, 30000); // Check every 30 seconds
+          }, 30000); 
           return () => clearInterval(timer);
       }, []);
 
@@ -1517,6 +1784,7 @@
           console.error(err);
         } finally {
             setLoading(false);
+            setIsAppVisible(true);
         }
       }, [demands]);
 
@@ -1553,7 +1821,6 @@
           await api.saveDemand(optimisticDemand);
           showToast(isEditing ? 'Talep başarıyla güncellendi.' : 'Talep başarıyla oluşturuldu.');
         } catch (err) {
-          console.error("Kayıt hatası:", err);
           showToast("Talep kaydedilemedi.", "error");
           setDemands(originalDemands);
         } finally {
@@ -1577,17 +1844,15 @@
                 if (result && result.success) { showToast('Talep başarıyla silindi.'); } 
                 else { throw new Error(result.message || 'Silme işlemi başarısız.'); }
             }
-            catch (err) { console.error("Silme hatası:", err); showToast('Talep silinemedi.', 'error'); setDemands(originalDemands); }
+            catch (err) { showToast('Talep silinemedi.', 'error'); setDemands(originalDemands); }
         } else if (type === 'progressItem' && progressIndex !== undefined) {
             const demandToUpdate = originalDemands.find(d => d.id === demandId);
             if (!demandToUpdate) return;
             
-            // Log deletion instead of complete removal (Audit Trail)
             const now = new Date();
             const deletedNote = demandToUpdate.progressHistory[progressIndex];
             const updatedHistory = demandToUpdate.progressHistory.filter((_, index) => index !== progressIndex);
             
-            // Add system note for deletion
             updatedHistory.push({
                 date: now.toISOString(),
                 description: `(SİSTEM NOTU) Bir not silindi.\nSilinme Tarihi: ${now.toLocaleString('tr-TR')}\nSilinen İçerik: "${description || deletedNote.description}"`,
@@ -1599,7 +1864,7 @@
             setSelectedDemandForProgress(updatedDemand);
             setProcessingDemands(prev => new Set(prev).add(demandId));
             try { await api.saveDemand(updatedDemand); showToast('Akış notu silindi.'); }
-            catch (err) { console.error("Akış silme hatası:", err); setDemands(originalDemands); setSelectedDemandForProgress(demandToUpdate); showToast('Akış notu silinemedi.', 'error'); }
+            catch (err) { setDemands(originalDemands); setSelectedDemandForProgress(demandToUpdate); showToast('Akış notu silinemedi.', 'error'); }
             finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
         }
       };
@@ -1618,14 +1883,14 @@
         setSelectedDemandForProgress(updatedDemand);
         setProcessingDemands(prev => new Set(prev).add(demandId));
         try { await api.saveDemand(updatedDemand); showToast(successMessage, 'success'); }
-        catch (err) { console.error("Güncelleme hatası:", err); setDemands(originalDemands); setSelectedDemandForProgress(originalDemands.find(d => d.id === demandId) || null); showToast(errorMessage, 'error'); }
+        catch (err) { setDemands(originalDemands); setSelectedDemandForProgress(originalDemands.find(d => d.id === demandId) || null); showToast(errorMessage, 'error'); }
         finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
       };
 
       const handleUpdateDemandFromModal = (updatedDemand) => {
         setDemands(prev => prev.map(d => d.id === updatedDemand.id ? updatedDemand : d));
         setSelectedDemandForProgress(updatedDemand);
-        api.saveDemand(updatedDemand).catch(err => console.error("Okuma durumu kaydedilemedi", err));
+        api.saveDemand(updatedDemand).catch(err => console.error("Update failed", err));
       };
       
       const handleRequestEditFromProgress = (demand) => { handleCloseProgressModal(); handleOpenEditModal(demand); };
@@ -1634,17 +1899,16 @@
         updateDemandProgress( demandId, d => {
             const newStatus = d.status === DemandStatus.YENI && newItems.length > 0 ? DemandStatus.ISLEMDE : d.status;
             return { ...d, progressHistory: [...d.progressHistory, ...newItems], status: newStatus };
-          }, 'Akış notları eklendi.', 'Akış notları eklenemedi.'
+          }, 'Akış notları eklendi.', 'Hata oluştu.'
         );
       };
       const handleCompleteDemand = (demandId, completionDate, completionNote) => {
         updateDemandProgress( demandId, d => {
             const [year, month, day] = completionDate.split('-').map(Number);
-            // Use local time construction to avoid UTC offsets pushing it to the next day in some timezones
             const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
             const finalNote = completionNote.trim() || 'Akış notu düzeltilir';
             return { ...d, status: DemandStatus.TAMAMLANDI, progressHistory: [...d.progressHistory, { date: endOfDay.toISOString(), description: finalNote, isSupportNote: false, isCompletionNote: true }] };
-          }, 'Talep tamamlandı.', 'Talep tamamlanamadı.'
+          }, 'Talep tamamlandı.', 'Hata oluştu.'
         ).then(() => handleCloseProgressModal());
       };
       
@@ -1653,7 +1917,6 @@
             const updatedHistory = [...d.progressHistory]; 
             updatedHistory[progressIndex] = updatedItem;
             
-            // Add audit log for the edit
             const now = new Date();
             updatedHistory.push({
                 date: now.toISOString(),
@@ -1662,7 +1925,7 @@
             });
 
             return { ...d, progressHistory: updatedHistory };
-          }, 'Akış notu güncellendi.', 'Akış notu güncellenemedi.'
+          }, 'Akış notu güncellendi.', 'Hata oluştu.'
         );
       };
 
@@ -1679,10 +1942,10 @@
                 const data = e.target.result;
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = 'DURUM TABLO';
-                if (!workbook.SheetNames.includes(sheetName)) throw new Error(`Excel dosyasında "${sheetName}" adında bir sayfa bulunamadı.`);
+                if (!workbook.SheetNames.includes(sheetName)) throw new Error(`Excel sayfa bulunamadı.`);
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, { cellDates: true });
-                if (jsonData.length === 0) throw new Error("Yüklenecek veri bulunamadı.");
+                if (jsonData.length === 0) throw new Error("Veri bulunamadı.");
                 const supportPersonMap = { 'T': 'Tuğba Hanım', 'R': 'Reyhan Hanım', 'S': 'Serhat Bey', 'F': 'Firuze Hanım' };
                 const mappedDemands = jsonData.slice(0, 132).map((row, index) => {
                     const baslik = row['BAŞLIK'] || 'Başlık Yok';
@@ -1708,18 +1971,14 @@
                 });
                 await api.batchSaveDemands(mappedDemands);
                 await refreshDemands();
-                alert(`${mappedDemands.length} adet talep başarıyla yüklendi.`);
-            } catch (error) { const errorMessage = error.message || "Hata oluştu."; console.error("Excel hatası:", errorMessage); setError(`Veriler yüklenemedi: ${errorMessage}`); alert(`Hata: ${errorMessage}`);
+                alert(`${mappedDemands.length} adet talep yüklendi.`);
+            } catch (error) { const errorMessage = error.message || "Hata."; setError(`Veriler yüklenemedi: ${errorMessage}`); alert(`Hata: ${errorMessage}`);
             } finally { setLoading(false); }
         };
-        reader.onerror = (error) => { console.error("Dosya okunurken hata:", error); alert("Dosya okuma hatası."); }
         reader.readAsArrayBuffer(file);
-        if (event.target) event.target.value = '';
       };
       
-      const priorityOrder = { [DemandPriority.YUKSEK]: 2, [DemandPriority.ORTA]: 1, [DemandPriority.DUSUK]: 0 };
-      
-      const hasActiveReminder = (d) => {
+      const hasActiveReminderLocal = (d) => {
           return d.progressHistory.some(item => 
             item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead
           );
@@ -1748,7 +2007,7 @@
           });
       };
 
-      const calculateOpenDays = (ebysDate) => {
+      const calculateOpenDaysLocal = (ebysDate) => {
         if (!ebysDate || ebysDate === 'N/A') return null;
         const start = new Date(ebysDate);
         const today = new Date();
@@ -1757,42 +2016,33 @@
       };
 
       const demandsForBoard = getFilteredDemandsForStatus(activeStatus).sort((a, b) => {
-          const aReminder = hasActiveReminder(a);
-          const bReminder = hasActiveReminder(b);
+          const aReminder = hasActiveReminderLocal(a);
+          const bReminder = hasActiveReminderLocal(b);
           if (aReminder && !bReminder) return -1;
           if (!aReminder && bReminder) return 1;
-          
-          // EBYS tarihine göre sıralama
           const dateA = a.ebysDate === 'N/A' ? 0 : new Date(a.ebysDate).getTime();
           const dateB = b.ebysDate === 'N/A' ? 0 : new Date(b.ebysDate).getTime();
           return dateA - dateB;
       });
 
       const statusCounts = {
-        [DemandStatus.YENI]: 0, // Gösterilmeyecek
+        [DemandStatus.YENI]: 0,
         [DemandStatus.ISLEMDE]: getFilteredDemandsForStatus(DemandStatus.ISLEMDE).length,
         [DemandStatus.TAMAMLANDI]: getFilteredDemandsForStatus(DemandStatus.TAMAMLANDI).length,
       };
 
-      // EXCEL EXPORT HELPERS (HTML BASED FOR STYLING)
       const exportToExcelHTML = (filename, rows, titleRow = null) => {
-            let html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
+            let html = '<html xmlns:o="urn:schemas-microsoft-com:office:excel">';
             html += '<head><meta http-equiv="content-type" content="text/plain; charset=UTF-8"/><style>td { mso-number-format:"\\@"; white-space: normal; word-wrap: break-word; vertical-align: middle; }</style></head><body>';
             html += '<table border="1" style="border-collapse: collapse; width: 100%; font-family: Calibri;">';
-            
-            // Add Special Title Row if exists
             if (titleRow) {
                 html += `<thead><tr><th colspan="${rows[0].length}" style="background-color: #FFFFFF; color: #000000; border: 1px solid #000000; font-weight: bold; text-align: center; font-size: 11pt; height: 50px;">${titleRow}</th></tr></thead>`;
             }
-
-            // Add Header
             html += '<thead><tr>';
             rows[0].forEach(header => {
                 html += `<th style="background-color: #C6E0B4; color: #000000; border: 1px solid #000000; font-weight: bold; padding: 10px; text-align: center; font-size: 11pt;">${header}</th>`;
             });
             html += '</tr></thead><tbody>';
-            
-            // Add Data
             rows.slice(1).forEach(row => {
                 html += '<tr>';
                 row.forEach((cell, index) => {
@@ -1810,7 +2060,6 @@
                 html += '</tr>';
             });
             html += '</tbody></table></body></html>';
-            
             const blob = new Blob([html], {type: 'application/vnd.ms-excel'});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1822,19 +2071,14 @@
 
       const handleExportToExcel = () => {
         if (demandsForBoard.length === 0) { alert('Veri yok.'); return; }
-        
-        // Sort by EBYS Date before export
         const sortedForExcel = [...demandsForBoard].sort((a, b) => {
             const dateA = a.ebysDate === 'N/A' ? 0 : new Date(a.ebysDate).getTime();
             const dateB = b.ebysDate === 'N/A' ? 0 : new Date(b.ebysDate).getTime();
             return dateA - dateB;
         });
-
         const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AÇIK TALEP SÜRESİ (GÜN)', 'AKIŞ NOTLARI', 'KALAN İŞLER / MİKTARLAR'];
-        
         const data = sortedForExcel.map((d, index) => {
           const checklistHistoryItems = d.progressHistory.filter(p => p && p.description && p.isKalanIsler && !p.description.includes('(SİSTEM NOTU)'));
-          
           let currentTotalLength = 0;
           const allNotes = d.progressHistory
             .filter(p => p && p.description && !p.description.includes('(SİSTEM NOTU)') && !p.isKalanIsler)
@@ -1845,8 +2089,6 @@
                     desc = `(DESTEK: ${p.supportPerson ? p.supportPerson.toLocaleUpperCase('tr-TR') : 'BELIRSIZ'}) ${desc}`;
                 }
                 const fullText = `${date}: ${desc}`;
-                
-                // Bölme kuralı: 200 karakteri geçtiğinde bir break ekle (alt satıra devam ettir)
                 if (currentTotalLength > 0 && currentTotalLength + fullText.length > 200) {
                     currentTotalLength = fullText.length;
                     return `<br/><br/>${fullText}`;
@@ -1855,35 +2097,34 @@
                 return `${date}: ${desc}`;
             })
             .join('<br style="mso-data-placement:same-cell;" />');
-
           const kalanItemsRaw = checklistHistoryItems;
           let kalanIslerText = "";
-          
           if (kalanItemsRaw && kalanItemsRaw.length > 5) {
             const lastStates = {};
             kalanItemsRaw.forEach(p => {
               const parts = p.description.split('|');
               if (parts.length >= 4) {
                 const name = parts[0].trim();
-                const talep = parseInt(parts[1].split(':')[1]) || 0;
-                const gelen = parseInt(parts[2].split(':')[1]) || 0;
-                const kalan = parseInt(parts[3].split(':')[1]) || 0;
-                lastStates[name] = { talep, gelen, kalan };
+                const talepValue = parts[1].split(':');
+                const gelenValue = parts[2].split(':');
+                const kalanValue = parts[3].split(':');
+                lastStates[name] = { 
+                  talep: parseInt(talepValue[1]) || 0, 
+                  gelen: parseInt(gelenValue[1]) || 0, 
+                  kalan: parseInt(kalanValue[1]) || 0 
+                };
               }
             });
-
             const uniqueList = Object.values(lastStates);
             const total = uniqueList.length;
             let fullyReceived = 0;
             let partialReceived = 0;
             let notReceived = 0;
-
             uniqueList.forEach(item => {
               if (item.kalan === 0) fullyReceived++;
               else if (item.gelen > 0) partialReceived++;
               else notReceived++;
             });
-            
             kalanIslerText = `${total} ADET ÜRÜNDEN ${fullyReceived} TANESİ TAMAMEN GELMİŞ, ${partialReceived} TANESİ KISMİ TAMAMLANMIŞ, ${notReceived} ADET HİÇ TAMAMLANMAMIŞTIR`;
           } else if (kalanItemsRaw) {
             kalanIslerText = kalanItemsRaw.map(p => {
@@ -1891,40 +2132,26 @@
                 return `${date}: ${p.description.toLocaleUpperCase('tr-TR')}`;
             }).join('<br style="mso-data-placement:same-cell;" />');
           }
-
           const ebysTarihi = d.ebysDate === 'N/A' ? 'N/A' : d.ebysDate.split('T')[0].split('-').reverse().join('.');
-          const acikSure = calculateOpenDays(d.ebysDate);
+          const acikSure = calculateOpenDaysLocal(d.ebysDate);
           const acikSureMetin = acikSure !== null ? `${acikSure}` : '';
-          
           return [index + 1, (d.title || '').toLocaleUpperCase('tr-TR'), (d.requestingUnit || '').toLocaleUpperCase('tr-TR'), d.type, d.ebysNumber, ebysTarihi, acikSureMetin, allNotes, kalanIslerText];
         });
-
         let titleRow = null;
         if (activeStatus === DemandStatus.ISLEMDE) {
             titleRow = 'HAVA ARAÇLARI BAKIM VE TEKNİK ŞUBE MÜDÜRLÜĞÜ TARAFINDAN DESTEK HİZMETLERİ ŞUBE MÜDÜRLÜĞÜNE YAZI İLE İLETİLEN FAKAT <span style="color:red;">HENÜZ TAMAMLANAMAYAN</span> TALEPLER';
         } else if (activeStatus === DemandStatus.TAMAMLANDI) {
             titleRow = 'HAVA ARAÇLARI BAKIM VE TEKNİK ŞUBE MÜDÜRLÜĞÜ TARAFINDAN DESTEK HİZMETLERİ ŞUBE MÜDÜRLÜĞÜNE YAZI İLE İLETİLEN <span style="color:green;">TAMAMLANAN</span> TALEPLER';
         }
-
         exportToExcelHTML(`talepler_${activeStatus}.xls`, [headers, ...data], titleRow);
       };
       
       const handleGenerateFlowReport = () => {
-          if (!reportStartDate || !reportEndDate) {
-              alert("Lütfen başlangıç ve bitiş tarihlerini seçin.");
-              return;
-          }
-          
-          const start = new Date(reportStartDate);
-          start.setHours(0,0,0,0);
-          const end = new Date(reportEndDate);
-          end.setHours(23,59,59,999);
-          
+          if (!reportStartDate || !reportEndDate) { alert("Tarih seçin."); return; }
+          const start = new Date(reportStartDate); start.setHours(0,0,0,0);
+          const end = new Date(reportEndDate); end.setHours(23,59,59,999);
           const reportRows = [['SIRA NO', 'TALEP BAŞLIĞI', 'OLAY TARİHİ', 'OLAY TÜRÜ', 'AÇIKLAMA']];
-          
-          let hasData = false;
-          let counter = 1;
-
+          let hasData = false; let counter = 1;
           demands.forEach(d => {
               const created = new Date(d.createdAt);
               if (created >= start && created <= end) {
@@ -1933,7 +2160,6 @@
                   reportRows.push([counter++, d.title, dateStr, 'Talep Açıldı', sentence]);
                   hasData = true;
               }
-              
               if (d.status === DemandStatus.TAMAMLANDI) {
                   const compItem = d.progressHistory.find(i => i.isCompletionNote);
                   if (compItem) {
@@ -1947,120 +2173,75 @@
                       }
                   }
               }
-
               const relevantProgress = d.progressHistory.filter(i => {
                   if (!i || !i.description) return false;
                   const itemDate = new Date(i.date);
                   return !i.isCompletionNote && !i.description.includes('(SİSTEM NOTU)') && itemDate >= start && itemDate <= end && !i.isKalanIsler;
               });
-              
               if (relevantProgress.length > 0) {
                   relevantProgress.forEach(i => {
                       const dateStr = new Date(i.date).toLocaleString('tr-TR');
-                      let sentence = '';
-                      let type = 'Akış Notu';
+                      let sentence = ''; let type = 'Akış Notu';
                       const desc = i.description.toLocaleUpperCase('tr-TR');
-                      
-                      if (desc.includes('HATIRLATMA OKUNDU')) {
-                          type = 'Hatırlatma Okundu';
-                          sentence = `${d.title} işi için hatırlatma okundu bilgisi kaydedildi: "${desc}"`;
-                      } else if (i.isSupportNote) {
-                          type = 'Destek Notu';
-                          sentence = `${d.title} işi için ${i.supportPerson || 'destek personeli'} tarafından şu not eklendi: "${desc}"`;
-                      } else {
-                          sentence = `${d.title} işi için şu akış notu eklendi: "${desc}"`;
-                      }
+                      if (desc.includes('HATIRLATMA OKUNDU')) { type = 'Hatırlatma Okundu'; sentence = `${d.title} işi için hatırlatma okundu: "${desc}"`; } 
+                      else if (i.isSupportNote) { type = 'Destek Notu'; sentence = `${d.title} işi için ${i.supportPerson || 'destek'} tarafından: "${desc}"`; } 
+                      else { sentence = `${d.title} işi için: "${desc}"`; }
                       reportRows.push([counter++, d.title, dateStr, type, sentence]);
                   });
                   hasData = true;
               }
           });
-          
-          if (!hasData) {
-              alert("Seçilen tarih aralığında veri yok.");
-              return;
-          }
-
+          if (!hasData) { alert("Veri yok."); return; }
           const startStr = new Date(reportStartDate).toLocaleDateString('tr-TR');
           const endStr = new Date(reportEndDate).toLocaleDateString('tr-TR');
           const title = `${startStr} - ${endStr} AKIŞ RAPORU`;
-
-          exportToExcelHTML(`akis_raporu_${reportStartDate}_${reportEndDate}.xls`, reportRows, title);
+          exportToExcelHTML(`akis_raporu.xls`, reportRows, title);
           setIsReportModalOpen(false);
       };
       
       const openReportModal = () => {
           const today = new Date().toISOString().split('T')[0];
-          setReportStartDate(today);
-          setReportEndDate(today);
-          setIsReportModalOpen(true);
+          setReportStartDate(today); setReportEndDate(today); setIsReportModalOpen(true);
       }
 
       return (
         <div className="min-h-screen">
             <LoadingCurtain isLoading={loading} onTransitionEnd={() => setIsAppVisible(true)} />
-            <div className={`transition-opacity duration-500 ${isAppVisible ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`transition-opacity duration-500 app-container-visible ${isAppVisible ? 'opacity-100' : 'opacity-0'}`}>
                 <Header onAddDemand={handleOpenAddModal} showUploadButton={demands.length === 0} onUpload={handleUploadClick} />
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xlsx, .xls" />
                 <main>
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 space-y-4 relative">
                          <div className="sticky top-[80px] z-40 bg-brand-bg pb-4 shadow-sm -mx-4 px-4 md:px-8 md:-mx-8 pt-2">
                              <FilterControls counts={statusCounts} activeStatus={activeStatus} onStatusChange={handleStatusChange} onExport={handleExportToExcel} />
-                             
                              <div className="flex justify-end mt-2">
                                  <button onClick={openReportModal} className="text-sm bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center gap-2 uppercase font-black tracking-widest uppercase">
-                                     <span className="font-semibold font-black tracking-widest">Akış Raporu İndir (Excel)</span>
+                                     <span>Akış Raporu İndir (Excel)</span>
                                  </button>
                              </div>
-
                              <TypeFilterControls filters={filtersByStatus[activeStatus]} onSearch={handleFilterChange} />
                          </div>
-                         
                          {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200 uppercase font-black tracking-widest uppercase">Hata: {error}</div>}
-                         
                          {!error && (
                             <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} currentTime={currentTime} />
                          )}
                     </div>
                 </main>
-                
                 <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} />
-                <DemandProgressModal 
-                    isOpen={isProgressModalOpen} 
-                    onClose={handleCloseProgressModal} 
-                    demand={selectedDemandForProgress} 
-                    currentTime={currentTime}
-                    onAddProgressItems={handleAddProgressItems} 
-                    onEditDemand={handleUpdateDemandFromModal} 
-                    onCompleteDemand={handleCompleteDemand} 
-                    onEditProgressItem={handleEditProgressItem} 
-                    onRequestDeleteProgressItem={requestProgressItemDeletion} 
-                    onOpenEditModal={handleRequestEditFromProgress}
-                />
+                <DemandProgressModal isOpen={isProgressModalOpen} onClose={handleCloseProgressModal} demand={selectedDemandForProgress} currentTime={currentTime} onAddProgressItems={handleAddProgressItems} onEditDemand={handleUpdateDemandFromModal} onCompleteDemand={handleCompleteDemand} onEditProgressItem={handleEditProgressItem} onRequestDeleteProgressItem={requestProgressItemDeletion} onOpenEditModal={handleRequestEditFromProgress} />
                 <ConfirmationModal isOpen={!!deletionTarget} onClose={handleCancelDeletion} onConfirm={handleConfirmDeletion} title="Silme Onayı" message="Bu öğeyi silmek istediğinizden emin misiniz? (Silinen öğeler sistem kaydı olarak saklanacaktır)." />
-                
                 {isReportModalOpen && (
                     <div className="fixed inset-0 bg-black/60 z-[60] flex justify-center items-center p-4 backdrop-blur-sm" onClick={() => setIsReportModalOpen(false)}>
                         <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-900" onClick={e => e.stopPropagation()}>
                             <h3 className="text-lg font-bold mb-4 text-gray-900 uppercase font-black tracking-tighter uppercase">Akış Raporu Tarih Aralığı</h3>
                             <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 uppercase font-black tracking-widest uppercase">Başlangıç</label>
-                                    <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 uppercase font-black tracking-widest uppercase">Bitiş</label>
-                                    <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/>
-                                </div>
+                                <div><label className="block text-sm font-medium text-gray-700 uppercase font-black tracking-widest uppercase">Başlangıç</label><input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/></div>
+                                <div><label className="block text-sm font-medium text-gray-700 uppercase font-black tracking-widest uppercase">Bitiş</label><input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full mt-1 border border-gray-300 rounded-md p-2 text-sm text-gray-900"/></div>
                             </div>
-                            <div className="mt-6 flex justify-end gap-3">
-                                <button onClick={() => setIsReportModalOpen(false)} className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium uppercase font-black tracking-widest uppercase">İptal</button>
-                                <button onClick={handleGenerateFlowReport} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm uppercase font-black tracking-widest uppercase">Rapor Oluştur</button>
-                            </div>
+                            <div className="mt-6 flex justify-end gap-3"><button onClick={() => setIsReportModalOpen(false)} className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium uppercase font-black tracking-widest uppercase">İptal</button><button onClick={handleGenerateFlowReport} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm uppercase font-black tracking-widest uppercase">Rapor Oluştur</button></div>
                         </div>
                     </div>
                 )}
-
                 {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
             </div>
         </div>
