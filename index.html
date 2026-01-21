@@ -163,6 +163,12 @@
       TAMAMLANDI: 'Tamamlandı',
     };
 
+    const DemandStatusValues = {
+        YENI: 'Yeni',
+        ISLEMDE: 'İşlemde',
+        TAMAMLANDI: 'Tamamlandı'
+    };
+
     const DemandPriority = {
       DUSUK: 'Düşük',
       ORTA: 'Orta',
@@ -399,7 +405,7 @@
       
       // Checklist Side Panel State
       const [isChecklistOpen, setIsChecklistOpen] = useState(false);
-      const [checklistItems, setChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
+      const [checklistItems, setChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false, history: '' }]);
 
       // Date Picker Logic State
       const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -433,15 +439,15 @@
                     const talep = parseInt(talepParts[1]) || 0;
                     const gelen = parseInt(gelenParts[1]) || 0;
                     
-                    let partNo = "";
-                    let serialNo = "";
+                    let partNo = "", serialNo = "", history = "";
                     parts.forEach(p => {
                       const sp = p.trim();
                       if (sp.startsWith('PN:')) partNo = sp.replace('PN:', '').trim();
                       if (sp.startsWith('SN:')) serialNo = sp.replace('SN:', '').trim();
+                      if (sp.startsWith('H:')) history = sp.replace('H:', '').trim();
                     });
 
-                    uniqueItems[name] = { name, partNo, serialNo, requested: talep, received: gelen, checked: false };
+                    uniqueItems[name] = { name, partNo, serialNo, requested: talep, received: gelen, checked: false, history };
                   }
                 });
               
@@ -457,10 +463,10 @@
                 });
                 setChecklistItems(existingItems);
               } else {
-                setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
+                setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false, history: '' }]);
               }
             } else {
-              setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
+              setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false, history: '' }]);
             }
 
             document.body.classList.add('modal-open');
@@ -545,7 +551,7 @@
       };
 
       const handleAddChecklistRow = () => {
-        setChecklistItems([...checklistItems, { name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
+        setChecklistItems([...checklistItems, { name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false, history: '' }]);
       };
 
       const handleUpdateChecklistItem = (index, field, value) => {
@@ -577,41 +583,34 @@
         
         const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
         
-        const flowNotes = [];
-        itemsWithNames.forEach(newItem => {
-            const oldItemEntry = demand.progressHistory.find(h => h.isKalanIsler && h.description.startsWith(newItem.name.toLocaleUpperCase('tr-TR')));
-            let oldReceived = 0;
-            if (oldItemEntry) {
-                const parts = oldItemEntry.description.split('|');
-                if (parts.length >= 3) {
-                    oldReceived = parseInt(parts[2].split(':')[1]) || 0;
-                }
+        const newChecklistHistory = itemsWithNames.map(newItem => {
+            const oldEntry = demand.progressHistory.find(h => h.isKalanIsler && h.description.startsWith(newItem.name.toLocaleUpperCase('tr-TR')));
+            let oldRec = 0, hStr = "";
+            if (oldEntry) {
+                const parts = oldEntry.description.split('|');
+                oldRec = parseInt(parts[2]?.split(':')[1]) || 0;
+                hStr = parts.find(p => p.trim().startsWith('H:'))?.replace('H:', '').trim() || "";
             }
-            
-            if (newItem.received > oldReceived) {
-                const diff = newItem.received - oldReceived;
-                flowNotes.push({
-                    date: new Date().toISOString(),
-                    description: `${newItem.name.toLocaleUpperCase('tr-TR')} ÜRÜNDEN ${diff} ADET DAHA GELDİ, TOPLAM ${newItem.received} OLDU`,
-                    isSupportNote: false
-                });
+            if (newItem.received > oldRec) {
+                const diff = newItem.received - oldRec;
+                const dStr = new Date().toLocaleDateString('tr-TR');
+                hStr = (hStr ? hStr + ";" : "") + dStr + "-" + diff;
             }
+            return {
+              date: new Date().toISOString(),
+              description: `${newItem.name.toLocaleUpperCase('tr-TR')} | Talep: ${newItem.requested} | Gelen: ${newItem.received} | Kalan: ${newItem.requested - newItem.received} | PN:${(newItem.partNo || '').toLocaleUpperCase('tr-TR')} | SN:${(newItem.serialNo || '').toLocaleUpperCase('tr-TR')} | H:${hStr}`,
+              isKalanIsler: true
+            };
         });
-
-        const newChecklistHistory = itemsWithNames.map(item => ({
-          date: new Date().toISOString(),
-          description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${(item.partNo || '').toLocaleUpperCase('tr-TR')} | SN:${(item.serialNo || '').toLocaleUpperCase('tr-TR')}`,
-          isKalanIsler: true
-        }));
 
         const updatedDemand = {
             ...demand,
-            progressHistory: [...otherHistory, ...flowNotes, ...newChecklistHistory]
+            progressHistory: [...otherHistory, ...newChecklistHistory]
         };
         
         onEditDemand(updatedDemand);
         setIsChecklistOpen(false);
-        setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false }]);
+        setChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false, history: '' }]);
       };
 
       const handleChecklistRealDelete = (idx) => {
@@ -621,7 +620,7 @@
               const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
               const newChecklistHistory = updatedChecklistItems.map(item => ({
                 date: new Date().toISOString(),
-                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${item.partNo} | SN:${item.serialNo}`,
+                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${item.partNo} | SN:${item.serialNo} | H:${item.history || ''}`,
                 isKalanIsler: true
               }));
               const updatedDemand = { ...demand, progressHistory: [...otherHistory, ...newChecklistHistory] };
@@ -636,7 +635,7 @@
               const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
               const newChecklistHistory = updatedChecklistItems.map(item => ({
                 date: new Date().toISOString(),
-                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${item.partNo} | SN:${item.serialNo}`,
+                description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: ${item.received} | Kalan: ${item.requested - item.received} | PN:${item.partNo} | SN:${item.serialNo} | H:${item.history || ''}`,
                 isKalanIsler: true
               }));
               const updatedDemand = { ...demand, progressHistory: [...otherHistory, ...newChecklistHistory] };
@@ -679,6 +678,7 @@
                             <th style="background-color: #1A4D2E; color: white;">TALEP ADET</th>
                             <th style="background-color: #1A4D2E; color: white;">GELEN ADET</th>
                             <th style="background-color: #1A4D2E; color: white;">KALAN ADET</th>
+                            <th style="background-color: #1A4D2E; color: white;">GELİŞ TARİHLERİ</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -693,6 +693,7 @@
                                 <td style="text-align: center;">${item.requested}</td>
                                 <td style="text-align: center;">${item.received}</td>
                                 <td style="text-align: center;">${item.requested - item.received}</td>
+                                <td>${(item.history || '').split(';').filter(x=>x).map(x=>{const [d,q]=x.split('-'); return `${d} – ${q} adet`;}).join('<br/>')}${item.received > 0 ? `<br/><b>Toplam: ${item.received} adet</b>` : ''}</td>
                             </tr>
                             `;
                         }).join('')}
@@ -768,13 +769,7 @@
         });
       };
 
-      const sortedChecklistItemsForTable = [...checklistItems].sort((a, b) => {
-          const aIncomplete = (a.requested - a.received) > 0;
-          const bIncomplete = (b.requested - b.received) > 0;
-          if (aIncomplete && !bIncomplete) return -1;
-          if (!aIncomplete && bIncomplete) return 1;
-          return 0;
-      });
+      const sortedChecklistItemsForTable = [...checklistItems];
 
       return (
         <React.Fragment>
@@ -959,9 +954,9 @@
                            </thead>
                            <tbody className="divide-y divide-gray-200">
                             {sortedChecklistItemsForTable.map((item, idx) => {
-                              const isRed = (item.requested - item.received > 0);
+                              const isRed = (item.requested - item.received > 0), isDone = (item.requested > 0 && item.received === item.requested), isExcess = (item.received > item.requested);
                               return (
-                                <tr key={idx} className={`transition-colors group ${isRed ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-green-50'}`}>
+                                <tr key={idx} className={`transition-colors group ${isExcess ? 'bg-red-100' : isDone ? 'bg-green-100' : isRed ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-green-50'}`}>
                                   <td className="px-4 py-3 border-x text-center"><input type="checkbox" checked={item.checked} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'checked', e.target.checked)} /></td>
                                   <td className="px-4 py-3 border-x text-center font-black text-xs text-gray-500">{idx + 1}</td>
                                   <td className="px-6 py-3 border-x">
@@ -1310,7 +1305,7 @@
 
         const checklistProgressItems = finalChecklistItems.map(item => ({
             date: new Date().toISOString(),
-            description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: 0 | Kalan: ${item.requested} | PN:${(item.partNo || '').toLocaleUpperCase('tr-TR')} | SN:${(item.serialNo || '').toLocaleUpperCase('tr-TR')}`,
+            description: `${item.name.toLocaleUpperCase('tr-TR')} | Talep: ${item.requested} | Gelen: 0 | Kalan: ${item.requested} | PN:${(item.partNo || '').toLocaleUpperCase('tr-TR')} | SN:${(item.serialNo || '').toLocaleUpperCase('tr-TR')} | H:`,
             isKalanIsler: true
         }));
 
@@ -1375,7 +1370,7 @@
                         {checklistWorkbook && (
                             <div className="bg-white border border-green-200 p-4 rounded-lg space-y-4 shadow-sm animate-in fade-in duration-300">
                                 <div>
-                                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-2 tracking-widest">1. Sayfa Seçin:</label>
+                                    <label className="text-[10px] font-black text-gray-500 uppercase block mb-2 tracking-widest">1. Sayfa Seçin: {checklistActiveSheet && <span className="text-purple-700 font-black">Seçili Sayfa: "{checklistActiveSheet}"</span>}</label>
                                     <div className="flex flex-wrap gap-2">
                                         {checklistSheets.map(s => (
                                             <button key={s} type="button" onClick={() => {
