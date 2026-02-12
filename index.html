@@ -136,6 +136,14 @@
     // BÖLÜM 1: TİPLER VE SABİTLER (TYPES & CONSTANTS)
     // ==========================================
 
+    const calculateOpenDaysLocal = (ebysDate) => {
+      if (!ebysDate || ebysDate === 'N/A') return null;
+      const start = new Date(ebysDate);
+      const today = new Date();
+      const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      return diff >= 0 ? diff : 0;
+    };
+
     const DemandType = {
       EGITIM: 'EĞİTİM',
       HIZMET: 'HİZMET',
@@ -161,12 +169,6 @@
       YENI: 'Yeni',
       ISLEMDE: 'İşlemde',
       TAMAMLANDI: 'Tamamlandı',
-    };
-
-    const DemandStatusValues = {
-        YENI: 'Yeni',
-        ISLEMDE: 'İşlemde',
-        TAMAMLANDI: 'Tamamlandı'
     };
 
     const DemandPriority = {
@@ -265,7 +267,7 @@
     const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [isOpening, setIsOpening] = useState(false);
       const [isDestroyed, setIsDestroyed] = useState(false);
-      const gifUrl = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3l0Z2I0Zml2bXJhM201dGhyNWh6YmN3a3A1NnA1c3Y3bGdidXd6bSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/xzSGnyFEGYQmTe29yi/giphy.gif";
+      const gifUrl = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTcwam1sYXJkazRoMTUxMWM1b2h6MTUwZDY1MXo5eThraGw4dG5kMCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/n7frjzkahqcqyik0o3/giphy.gif";
 
       useEffect(() => {
         if (!isLoading) {
@@ -406,6 +408,7 @@
       // Checklist Side Panel State
       const [isChecklistOpen, setIsChecklistOpen] = useState(false);
       const [checklistItems, setChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false, history: '' }]);
+      const [checklistManualDate, setChecklistManualDate] = useState(new Date().toISOString().split('T')[0]);
 
       // Date Picker Logic State
       const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -425,6 +428,7 @@
             setIsReminderDatePickerOpen(false);
             setIsEditReminderDatePickerOpen(false);
             setIsChecklistOpen(false);
+            setChecklistManualDate(new Date().toISOString().split('T')[0]);
             
             if (demand && demand.progressHistory) {
               const uniqueItems = {};
@@ -511,8 +515,13 @@
       };
 
       const handleEditItemDescriptionChange = (e) => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
         const val = e.target.value.toLocaleUpperCase('tr-TR');
         setEditingItem(prev => ({...prev, description: val}));
+        requestAnimationFrame(() => {
+          if (e.target) e.target.setSelectionRange(start, end);
+        });
       };
 
       const parseProgressText = (text, isSupport, supportPerson, dateOverride, isChecklist = false) => {
@@ -593,7 +602,8 @@
             }
             if (newItem.received > oldRec) {
                 const diff = newItem.received - oldRec;
-                const dStr = new Date().toLocaleDateString('tr-TR');
+                const [y, m, d] = checklistManualDate.split('-');
+                const dStr = `${d}.${m}.${y}`;
                 hStr = (hStr ? hStr + ";" : "") + dStr + "-" + diff;
             }
             return {
@@ -931,6 +941,10 @@
                     <div className="p-4 bg-gray-50 border-b flex justify-between items-center flex-shrink-0 shadow-sm">
                       <h3 className="font-black text-green-800 flex items-center gap-2 text-xl uppercase tracking-widest"><Icons.ClipboardList className="w-7 h-7 text-green-700"/> Kalan İşler / Miktarlar Listesi</h3>
                       <div className="flex items-center gap-3">
+                         <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
+                            <label className="text-[10px] font-black text-gray-500 uppercase">Geliş Tarihi:</label>
+                            <input type="date" value={checklistManualDate} onChange={(e) => setChecklistManualDate(e.target.value)} className="text-xs border rounded p-1 text-gray-900 font-bold"/>
+                         </div>
                          {anyChecked && <button onClick={handleBulkDeleteChecklist} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-black text-xs uppercase shadow-md tracking-widest"><Icons.Trash className="w-4 h-4"/> SEÇİLENLERİ SİL</button>}
                          <button onClick={handleDownloadChecklistAsWord} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-black text-xs uppercase shadow-md tracking-widest"><Icons.Download className="w-4 h-4"/> WORD OLARAK İNDİR</button>
                          <button onClick={() => setIsChecklistOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white border p-1.5 rounded-full transition-colors"><Icons.X className="w-6 h-6"/></button>
@@ -954,9 +968,9 @@
                            </thead>
                            <tbody className="divide-y divide-gray-200">
                             {sortedChecklistItemsForTable.map((item, idx) => {
-                              const isRed = (item.requested - item.received > 0), isDone = (item.requested > 0 && item.received === item.requested), isExcess = (item.received > item.requested);
+                              const isRed = (item.requested - item.received > 0), isDone = (item.requested > 0 && item.received === item.requested), isEx = (item.received > item.requested);
                               return (
-                                <tr key={idx} className={`transition-colors group ${isExcess ? 'bg-red-100' : isDone ? 'bg-green-100' : isRed ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-green-50'}`}>
+                                <tr key={idx} className={`transition-colors group ${isEx ? 'bg-red-100' : isDone ? 'bg-green-100' : isRed ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-green-50'}`}>
                                   <td className="px-4 py-3 border-x text-center"><input type="checkbox" checked={item.checked} onChange={(e) => handleUpdateChecklistItem(checklistItems.findIndex(i => i === item), 'checked', e.target.checked)} /></td>
                                   <td className="px-4 py-3 border-x text-center font-black text-xs text-gray-500">{idx + 1}</td>
                                   <td className="px-6 py-3 border-x">
@@ -1102,8 +1116,8 @@
     };
 
     // --- DemandModal (Yeni/Düzenle) ---
-    const DemandModal = ({ isOpen, onClose, onSave, demandToEdit }) => {
-      const [formData, setFormData] = useState({ title: '', description: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
+    const DemandModal = ({ isOpen, onClose, onSave, demandToEdit, storedAssignedNames = [] }) => {
+      const [formData, setFormData] = useState({ title: '', description: '', assignedTo: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '', addAssignedToList: false });
       const [checklistInput, setChecklistInput] = useState('');
       const [processedChecklist, setProcessedChecklist] = useState([]);
       const [manualChecklistItems, setManualChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
@@ -1125,19 +1139,21 @@
           setFormData({ 
               title: demandToEdit.title, 
               description: demandToEdit.description, 
+              assignedTo: demandToEdit.assignedTo || '',
               type: demandToEdit.type, 
               requestingUnits: demandToEdit.requestingUnit ? demandToEdit.requestingUnit.split(',') : [], 
               unitToAdd: '', 
               priority: demandToEdit.priority, 
               status: demandToEdit.status, 
               ebysNumber: String(demandToEdit.ebysNumber) || '', 
-              ebysDate: dateStr
+              ebysDate: dateStr,
+              addAssignedToList: false
           });
           setChecklistInput('');
           setProcessedChecklist([]);
           setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
         } else {
-          setFormData({ title: '', description: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '' });
+          setFormData({ title: '', description: '', assignedTo: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '', addAssignedToList: false });
           setChecklistInput('');
           setProcessedChecklist([]);
           setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
@@ -1167,7 +1183,7 @@
         if (field === 'name') {
             const text = value;
             const pnRegex = /(?:-?\s*(?:P\/?N|PN)[:\s]*)([A-Z0-9\-/.]+)/i;
-            const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-\d{4,}-?\d*)/);
+            const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-?\d*)/);
             if (pnMatch) {
                 updated[index].partNo = (pnMatch[1] || pnMatch[0]).trim().toLocaleUpperCase('tr-TR');
             }
@@ -1230,7 +1246,7 @@
             const pnRegex = /(?:-?\s*(?:P\/?N|PN)[:\s]*)([A-Z0-9\-/.]+)/i;
             const snRegex = /(?:-?\s*(?:S\/?N|SN)[:\s]*)([A-Z0-9\-/.]+)/i;
             
-            const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-\d{4,}-?\d*)/);
+            const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-?\d*)/);
             if (pnMatch) {
               pn = (pnMatch[1] || pnMatch[0]).trim().toLocaleUpperCase('tr-TR');
               text = text.replace(pnMatch[0], "").trim();
@@ -1327,9 +1343,24 @@
                 <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
-                <div className="space-y-2">
-                   <label className="text-sm font-black text-gray-700 uppercase tracking-widest">Talep Başlığı</label>
-                   <input type="text" placeholder="Başlık" value={formData.title} onChange={handleTitleChange} className="w-full border p-3 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" required/>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                       <label className="text-sm font-black text-gray-700 uppercase tracking-widest">Talep Başlığı</label>
+                       <input type="text" placeholder="Başlık" value={formData.title} onChange={handleTitleChange} className="w-full border p-3 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" required/>
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-sm font-black text-gray-700 uppercase tracking-widest">İşi Alan Kurum / Kişi</label>
+                       <div className="flex flex-col gap-1">
+                          <input list="assignedNames" type="text" placeholder="Firma veya Kişi Adı" value={formData.assignedTo} onChange={e=>setFormData({...formData, assignedTo: e.target.value.toLocaleUpperCase('tr-TR')})} className="w-full border p-3 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" />
+                          <datalist id="assignedNames">
+                             {storedAssignedNames.map(name => <option key={name} value={name} />)}
+                          </datalist>
+                          <label className="flex items-center gap-2 text-xs font-black text-gray-500 uppercase cursor-pointer select-none mt-1">
+                             <input type="checkbox" checked={formData.addAssignedToList} onChange={e => setFormData({...formData, addAssignedToList: e.target.checked})} className="rounded text-blue-600" />
+                             Listeye Ekle
+                          </label>
+                       </div>
+                    </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-6">
@@ -1508,15 +1539,7 @@
           item => item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead
       );
 
-      const calculateOpenDays = (ebysDate) => {
-        if (!ebysDate || ebysDate === 'N/A') return null;
-        const start = new Date(ebysDate);
-        const today = new Date();
-        const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        return diff >= 0 ? diff : 0;
-      };
-
-      const openDays = calculateOpenDays(demand.ebysDate);
+      const openDays = calculateOpenDaysLocal(demand.ebysDate);
       const ebysDateDisplay = demand.ebysDate === 'N/A' ? 'N/A' : demand.ebysDate.split('T')[0].split('-').reverse().join('.');
 
       const isPartiallyCompleted = demand.progressHistory.some(h => {
@@ -1554,6 +1577,9 @@
               <span className="font-medium uppercase tracking-widest">{demand.requestingUnit}</span>
             </div>
           )}
+          {demand.assignedTo && (
+              <div className="text-[10px] text-blue-700 font-black mb-2 uppercase tracking-widest truncate" title={demand.assignedTo}>İşi Alan: {demand.assignedTo}</div>
+          )}
           <p className="text-sm text-gray-600 mb-4 break-words flex-grow line-clamp-3 uppercase font-bold tracking-tight leading-tight">{demand.description}</p>
           <div className="border-t border-gray-200 pt-3 mt-auto space-y-2">
             {isPartiallyCompleted && demand.status !== DemandStatus.TAMAMLANDI && (
@@ -1562,8 +1588,13 @@
             <div className="flex justify-between items-center text-xs text-gray-500">
               <div className="flex flex-col">
                 <span className="font-semibold text-gray-600 uppercase tracking-widest">EBYS NO: {demand.ebysNumber}</span>
-                {openDays !== null && (
+                {openDays !== null && demand.status !== DemandStatus.TAMAMLANDI && (
                   <span className="text-red-600 font-black uppercase mt-0.5 tracking-widest">{openDays} GÜNDÜR AÇIK</span>
+                )}
+                {demand.status === DemandStatus.TAMAMLANDI && demand.progressHistory.some(h => h.isCompletionNote) && (
+                   <span className="text-green-600 font-black uppercase mt-0.5 tracking-widest">
+                    TAMAMLANMA: {new Date(demand.progressHistory.find(h => h.isCompletionNote).date).toLocaleDateString('tr-TR')}
+                   </span>
                 )}
               </div>
               <span className="flex items-center gap-1.5 uppercase font-bold"><Icons.Calendar className="w-4 h-4" />{ebysDateDisplay}</span>
@@ -1624,7 +1655,7 @@
     const Header = ({ onAddDemand, showUploadButton, onUpload }) => (
       <header className="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center gap-3">
-            <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3l0Z2I0Zml2bXJhM201dGhyNWh6YmN3a3A1NnA1c3Y3bGdidXd6bSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/xzSGnyFEGYQmTe29yi/giphy.gif" alt="Logo" className="h-12 w-auto mix-blend-multiply" />
+            <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTcwam1sYXJkazRoMTUxMWM1b2h6MTUwZDY1MXo5eThraGw4dG5kMCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/n7frjzkahqcqyik0o3/giphy.gif" alt="Logo" className="h-12 w-auto mix-blend-multiply" />
             <h1 className="text-xl font-bold text-gray-800 hidden sm:block uppercase tracking-widest font-black">Task Line</h1>
         </div>
         <div className="flex items-center gap-4">
@@ -1673,7 +1704,7 @@
     };
 
     // --- TypeFilterControls ---
-    const TypeFilterControls = ({ filters, onSearch }) => {
+    const TypeFilterControls = ({ filters, onSearch, assignedNames = [] }) => {
       const [internalFilters, setInternalFilters] = useState(filters);
       useEffect(() => { setInternalFilters(filters); }, [filters]);
       useEffect(() => {
@@ -1688,6 +1719,7 @@
       const handleTermChange = (e) => setInternalFilters(prev => ({ ...prev, term: e.target.value }));
       const handleTypeChange = (e) => setInternalFilters(prev => ({ ...prev, type: e.target.value }));
       const handleUnitChange = (e) => setInternalFilters(prev => ({ ...prev, requestingUnit: e.target.value }));
+      const handleAssignedChange = (e) => setInternalFilters(prev => ({ ...prev, assignedTo: e.target.value }));
 
       return (
         <div className="pt-2">
@@ -1696,6 +1728,10 @@
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none uppercase font-black"><Icons.Search className="h-5 w-5 text-gray-400" /></div>
                 <input type="search" value={internalFilters.term} onChange={handleTermChange} className="block w-full rounded-lg border border-gray-300 bg-gray-50 text-gray-900 pl-10 p-2.5 focus:border-blue-500 focus:ring-blue-500 sm:text-sm uppercase font-black tracking-widest placeholder-gray-400" placeholder="Ara (EBYS No, Başlık, Açıklama...)" />
             </div>
+            <select value={internalFilters.assignedTo} onChange={handleAssignedChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
+                <option value="all">Tüm İşi Alanlar</option>
+                {assignedNames.map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
             <select value={internalFilters.type} onChange={handleTypeChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
                 <option value="all">Tüm Talep Türleri</option>
                 {Object.values(DemandType).map(type => <option key={type} value={type}>{type}</option>)}
@@ -1723,15 +1759,16 @@
       const [demandToEdit, setDemandToEdit] = useState(null);
       const [activeStatus, setActiveStatus] = useState(DemandStatus.ISLEMDE);
       const [filtersByStatus, setFiltersByStatus] = useState({
-        [DemandStatus.YENI]: { type: 'all', term: '', requestingUnit: 'all' },
-        [DemandStatus.ISLEMDE]: { type: 'all', term: '', requestingUnit: 'all' },
-        [DemandStatus.TAMAMLANDI]: { type: 'all', term: '', requestingUnit: 'all' },
+        [DemandStatus.YENI]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all' },
+        [DemandStatus.ISLEMDE]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all' },
+        [DemandStatus.TAMAMLANDI]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all' },
       });
       const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
       const [selectedDemandForProgress, setSelectedDemandForProgress] = useState(null);
       const [deletionTarget, setDeletionTarget] = useState(null);
       const [toast, setToast] = useState(null);
       const [currentTime, setCurrentTime] = useState(new Date());
+      const [storedAssignedNames, setStoredAssignedNames] = useState([]);
       
       const [isReportModalOpen, setIsReportModalOpen] = useState(false);
       const [reportStartDate, setReportStartDate] = useState('');
@@ -1773,6 +1810,10 @@
           setError(null);
           const data = await api.getDemands();
           setDemands(data);
+          
+          // Extract unique assigned names for autocomplete/filters
+          const names = Array.from(new Set(data.map(d => d.assignedTo).filter(n => !!n)));
+          setStoredAssignedNames(names);
         } catch (err) {
           const errorMessage = err.message || 'Bilinmeyen bir hata oluştu.';
           setError(`Veriler yüklenemedi: ${errorMessage}`);
@@ -1793,7 +1834,7 @@
         const originalDemands = [...demands];
         const isEditing = !!demandData.id;
         let optimisticDemand;
-        const { checklistItems, ...restOfData } = demandData;
+        const { checklistItems, addAssignedToList, ...restOfData } = demandData;
 
         if (isEditing) {
           const existingDemand = originalDemands.find(d => d.id === restOfData.id);
@@ -1815,6 +1856,9 @@
         try {
           await api.saveDemand(optimisticDemand);
           showToast(isEditing ? 'Talep başarıyla güncellendi.' : 'Talep başarıyla oluşturuldu.');
+          if (addAssignedToList && optimisticDemand.assignedTo) {
+              setStoredAssignedNames(prev => Array.from(new Set([...prev, optimisticDemand.assignedTo])));
+          }
         } catch (err) {
           showToast("Talep kaydedilemedi.", "error");
           setDemands(originalDemands);
@@ -1951,6 +1995,7 @@
                     const talepTarihi = row['TALEP TARİHİ'];
                     const destekNotu = row['DESTEK HİZMETLERİ NOTU'] || '';
                     const akisNotu = row['AKIŞ NOTU'] || '';
+                    const assignedTo = row['İŞİ ALAN KURUM / KİŞİ'] || '';
                     const destekPersonelKisaltma = String(row['DESTEK HİZMETİNDEN KİMDEN BİLGİ ALINDI ?'] || '').trim().toUpperCase();
                     let ebysDate, createdAt;
                     if (talepTarihi instanceof Date && !isNaN(talepTarihi.getTime())) { ebysDate = talepTarihi.toISOString(); createdAt = talepTarihi.toISOString(); }
@@ -1962,7 +2007,7 @@
                     if (akisNotu) akisNotu.split('\n').reverse().forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim().toLocaleUpperCase('tr-TR'), isSupportNote: false }); });
                     if (destekNotu) { const supportPerson = supportPersonMap[destekPersonelKisaltma] || destekPersonelKisaltma || 'Belirtilmemiş'; destekNotu.split('\n').forEach((line) => { if (line.trim()) progressHistory.push({ date: new Date(baseDate.getTime() + dateOffset++).toISOString(), description: line.trim().toLocaleUpperCase('tr-TR'), isSupportNote: true, supportPerson }); }); }
                     const status = index < 102 ? DemandStatus.TAMAMLANDI : DemandStatus.ISLEMDE;
-                    return { id: Date.now() + index, title: baslik, description: aciklama, requestingUnit, type, status, priority: DemandPriority.ORTA, createdAt, ebysNumber: ebysNo, ebysDate, progressHistory, attachments: [] };
+                    return { id: Date.now() + index, title: baslik, description: aciklama, assignedTo, requestingUnit, type, status, priority: DemandPriority.ORTA, createdAt, ebysNumber: ebysNo, ebysDate, progressHistory, attachments: [] };
                 });
                 await api.batchSaveDemands(mappedDemands);
                 await refreshDemands();
@@ -1973,7 +2018,9 @@
         reader.readAsArrayBuffer(file);
       };
       
-      const hasActiveReminderLocal = (d) => {
+      const priorityOrder = { [DemandPriority.YUKSEK]: 2, [DemandPriority.ORTA]: 1, [DemandPriority.DUSUK]: 0 };
+      
+      const hasActiveReminder = (d) => {
           return d.progressHistory.some(item => 
             item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead
           );
@@ -1990,6 +2037,7 @@
           })
           .filter(d => statusFilters.type === 'all' || d.type === statusFilters.type)
           .filter(d => statusFilters.requestingUnit === 'all' || (d.requestingUnit || '').includes(statusFilters.requestingUnit))
+          .filter(d => statusFilters.assignedTo === 'all' || d.assignedTo === statusFilters.assignedTo)
           .filter(d => {
             const searchTerm = statusFilters.term.toLocaleLowerCase('tr-TR');
             if (!searchTerm) return true;
@@ -1997,22 +2045,22 @@
               d.title.toLocaleLowerCase('tr-TR').includes(searchTerm) ||
               d.description.toLocaleLowerCase('tr-TR').includes(searchTerm) ||
               String(d.ebysNumber).toLocaleLowerCase('tr-TR').includes(searchTerm) ||
-              (d.requestingUnit || '').toLocaleLowerCase('tr-TR').includes(searchTerm)
+              (d.requestingUnit || '').toLocaleLowerCase('tr-TR').includes(searchTerm) ||
+              (d.assignedTo || '').toLocaleLowerCase('tr-TR').includes(searchTerm)
             );
           });
       };
 
-      const calculateOpenDaysLocal = (ebysDate) => {
-        if (!ebysDate || ebysDate === 'N/A') return null;
-        const start = new Date(ebysDate);
-        const today = new Date();
-        const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        return diff >= 0 ? diff : 0;
-      };
-
       const demandsForBoard = getFilteredDemandsForStatus(activeStatus).sort((a, b) => {
-          const aReminder = hasActiveReminderLocal(a);
-          const bReminder = hasActiveReminderLocal(b);
+          if (activeStatus === DemandStatus.TAMAMLANDI) {
+              const compA = a.progressHistory.find(h => h.isCompletionNote);
+              const compB = b.progressHistory.find(h => h.isCompletionNote);
+              const dateA = compA ? new Date(compA.date).getTime() : 0;
+              const dateB = compB ? new Date(compB.date).getTime() : 0;
+              return dateB - dateA; // Newest completion first
+          }
+          const aReminder = hasActiveReminder(a);
+          const bReminder = hasActiveReminder(b);
           if (aReminder && !bReminder) return -1;
           if (!aReminder && bReminder) return 1;
           const dateA = a.ebysDate === 'N/A' ? 0 : new Date(a.ebysDate).getTime();
@@ -2026,6 +2074,7 @@
         [DemandStatus.TAMAMLANDI]: getFilteredDemandsForStatus(DemandStatus.TAMAMLANDI).length,
       };
 
+      // EXCEL EXPORT HELPERS
       const exportToExcelHTML = (filename, rows, titleRow = null) => {
             let html = '<html xmlns:o="urn:schemas-microsoft-com:office:excel">';
             html += '<head><meta http-equiv="content-type" content="text/plain; charset=UTF-8"/><style>td { mso-number-format:"\\@"; white-space: normal; word-wrap: break-word; vertical-align: middle; }</style></head><body>';
@@ -2071,7 +2120,7 @@
             const dateB = b.ebysDate === 'N/A' ? 0 : new Date(b.ebysDate).getTime();
             return dateA - dateB;
         });
-        const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AÇIK TALEP SÜRESİ (GÜN)', 'AKIŞ NOTLARI', 'KALAN İŞLER / MİKTARLAR'];
+        const headers = ['SIRA NO', 'BAŞLIK', 'TALEP EDEN BİRİM', 'TALEP TÜRÜ', 'EBYS NO', 'EBYS TARİHİ', 'AÇIK TALEP SÜRESİ (GÜN)', 'AKIŞ NOTLARI', 'KALAN İŞLER / MİKTARLAR', 'İŞİ ALAN KURUM / KİŞİ'];
         const data = sortedForExcel.map((d, index) => {
           const checklistHistoryItems = d.progressHistory.filter(p => p && p.description && p.isKalanIsler && !p.description.includes('(SİSTEM NOTU)'));
           let currentTotalLength = 0;
@@ -2100,14 +2149,10 @@
               const parts = p.description.split('|');
               if (parts.length >= 4) {
                 const name = parts[0].trim();
-                const talepValue = parts[1].split(':');
-                const gelenValue = parts[2].split(':');
-                const kalanValue = parts[3].split(':');
-                lastStates[name] = { 
-                  talep: parseInt(talepValue[1]) || 0, 
-                  gelen: parseInt(gelenValue[1]) || 0, 
-                  kalan: parseInt(kalanValue[1]) || 0 
-                };
+                const talep = parseInt(parts[1].split(':')[1]) || 0;
+                const gelen = parseInt(parts[2].split(':')[1]) || 0;
+                const kalan = parseInt(parts[3].split(':')[1]) || 0;
+                lastStates[name] = { talep, gelen, kalan };
               }
             });
             const uniqueList = Object.values(lastStates);
@@ -2130,7 +2175,7 @@
           const ebysTarihi = d.ebysDate === 'N/A' ? 'N/A' : d.ebysDate.split('T')[0].split('-').reverse().join('.');
           const acikSure = calculateOpenDaysLocal(d.ebysDate);
           const acikSureMetin = acikSure !== null ? `${acikSure}` : '';
-          return [index + 1, (d.title || '').toLocaleUpperCase('tr-TR'), (d.requestingUnit || '').toLocaleUpperCase('tr-TR'), d.type, d.ebysNumber, ebysTarihi, acikSureMetin, allNotes, kalanIslerText];
+          return [index + 1, (d.title || '').toLocaleUpperCase('tr-TR'), (d.requestingUnit || '').toLocaleUpperCase('tr-TR'), d.type, d.ebysNumber, ebysTarihi, acikSureMetin, allNotes, kalanIslerText, d.assignedTo || ''];
         });
         let titleRow = null;
         if (activeStatus === DemandStatus.ISLEMDE) {
@@ -2210,19 +2255,19 @@
                          <div className="sticky top-[80px] z-40 bg-brand-bg pb-4 shadow-sm -mx-4 px-4 md:px-8 md:-mx-8 pt-2">
                              <FilterControls counts={statusCounts} activeStatus={activeStatus} onStatusChange={handleStatusChange} onExport={handleExportToExcel} />
                              <div className="flex justify-end mt-2">
-                                 <button onClick={openReportModal} className="text-sm bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center gap-2 uppercase font-black tracking-widest uppercase">
+                                 <button onClick={openReportModal} className="text-sm bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center gap-2 uppercase font-black tracking-widest">
                                      <span>Akış Raporu İndir (Excel)</span>
                                  </button>
                              </div>
-                             <TypeFilterControls filters={filtersByStatus[activeStatus]} onSearch={handleFilterChange} />
+                             <TypeFilterControls filters={filtersByStatus[activeStatus]} onSearch={handleFilterChange} assignedNames={storedAssignedNames} />
                          </div>
-                         {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200 uppercase font-black tracking-widest uppercase">Hata: {error}</div>}
+                         {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200 uppercase font-black tracking-widest">Hata: {error}</div>}
                          {!error && (
                             <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} currentTime={currentTime} />
                          )}
                     </div>
                 </main>
-                <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} />
+                <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} storedAssignedNames={storedAssignedNames} />
                 <DemandProgressModal isOpen={isProgressModalOpen} onClose={handleCloseProgressModal} demand={selectedDemandForProgress} currentTime={currentTime} onAddProgressItems={handleAddProgressItems} onEditDemand={handleUpdateDemandFromModal} onCompleteDemand={handleCompleteDemand} onEditProgressItem={handleEditProgressItem} onRequestDeleteProgressItem={requestProgressItemDeletion} onOpenEditModal={handleRequestEditFromProgress} />
                 <ConfirmationModal isOpen={!!deletionTarget} onClose={handleCancelDeletion} onConfirm={handleConfirmDeletion} title="Silme Onayı" message="Bu öğeyi silmek istediğinizden emin misiniz? (Silinen öğeler sistem kaydı olarak saklanacaktır)." />
                 {isReportModalOpen && (
