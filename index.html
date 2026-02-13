@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbyTaMMkhkhnGKD0h96jgbDwIYbxAa0JRwjpr3P4V805m5NPvDBukC0bKQMPHRNgCfSPxA/exec" />
+  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbxR8rqHpHYrhl_h9j9h2eC9AALSg5RiaMVd1lRby4K78gAc6Z18YBIz5GQQz8pBSNrssw/exec" />
   <title>Task Line</title>
   
   <!-- Tailwind CSS -->
@@ -111,16 +111,6 @@
       z-index: 50 !important;
     }
   </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "xlsx": "https://esm.sh/xlsx@^0.18.5"
-  }
-}
-</script>
 </head>
 <body class="bg-brand-bg text-white font-sans antialiased">
   
@@ -607,7 +597,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         if (field === 'name') {
           const text = value;
           const pnRegex = /(?:-?\s*(?:P\/?N|PN)[:\s]*|P\/?N[:\s]+)([A-Z0-9\-/.]+)/i;
-          const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-\d{4,}-?\d*)/);
+          const pnMatch = text.match(pnRegex) || text.match(/([A-Z0-9]+-\d{4,}-[A-Z0-9]+)/i) || text.match(/(\d{4,}-?\d*)/);
           if (pnMatch) {
               newItems[index].partNo = (pnMatch[1] || pnMatch[0]).trim().toLocaleUpperCase('tr-TR');
           }
@@ -763,6 +753,15 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       const resetOgmCloudForm = () => { setShowOgmCloudForm(false); setOgmCloudDidUpload(false); setOgmCloudAttachmentType(attachmentTypes[0]); setOgmCloudOtherAttachmentName(''); };
       
+      const handleOgmCloudSave = () => {
+          if (ogmCloudDidUpload) {
+            const note = `${ogmCloudAttachmentType} OGM Bulut'a yüklenmiştir.`;
+            const parsedItems = parseProgressText(note, false, '', customDate);
+            onAddProgressItems(demand.id, parsedItems);
+            resetOgmCloudForm();
+          }
+      };
+
       const handleCloseModal = () => {
         const updatedHistory = demand.progressHistory.map(item => {
             if (item.reminderDate && new Date(item.reminderDate) <= currentTime && !item.reminderRead) {
@@ -1864,10 +1863,19 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           if (!isSilent && demands.length > 0) setLoading(true);
           setError(null);
           const data = await api.getDemands();
-          setDemands(data);
+          
+          // Persistence logic: Extract last assignedTo from history if exists
+          const processedData = data.map(d => {
+            if (d.assignedToHistory && Array.isArray(d.assignedToHistory) && d.assignedToHistory.length > 0) {
+              d.assignedTo = d.assignedToHistory[d.assignedToHistory.length - 1].description;
+            }
+            return d;
+          });
+
+          setDemands(processedData);
           
           // Extract unique assigned names for filters
-          const names = Array.from(new Set(data.flatMap(d => d.assignedTo ? d.assignedTo.split(',').map(s => s.trim()) : []).filter(n => !!n)));
+          const names = Array.from(new Set(processedData.flatMap(d => d.assignedTo ? d.assignedTo.split(',').map(s => s.trim()) : []).filter(n => !!n)));
           setStoredAssignedNames(names);
         } catch (err) {
           const errorMessage = err.message || 'Bilinmeyen bir hata oluştu.';
@@ -1902,6 +1910,17 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           const now = new Date();
           const progressHistory = checklistItems || [];
           optimisticDemand = { ...restOfData, id: Date.now(), createdAt: now.toISOString(), progressHistory, attachments: [] };
+        }
+
+        // Persistence logic for Column M (assignedToHistory)
+        let aHistory = optimisticDemand.assignedToHistory || [];
+        const currentAssignedValue = optimisticDemand.assignedTo || "";
+        if (currentAssignedValue && (!aHistory.length || aHistory[aHistory.length - 1].description !== currentAssignedValue)) {
+            aHistory.push({
+                date: new Date().toISOString(),
+                description: currentAssignedValue
+            });
+            optimisticDemand.assignedToHistory = aHistory;
         }
 
         setDemands(prev => isEditing ? prev.map(d => d.id === optimisticDemand.id ? optimisticDemand : d) : [...prev, optimisticDemand]);
