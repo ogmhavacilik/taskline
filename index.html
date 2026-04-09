@@ -443,6 +443,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [isChecklistOpen, setIsChecklistOpen] = useState(false);
       const [checklistItems, setChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0, received: 0, checked: false, history: '', assignedTo: '' }]);
       const [checklistManualDate, setChecklistManualDate] = useState(new Date().toISOString().split('T')[0]);
+      const [isMaterialTableModalOpen, setIsMaterialTableModalOpen] = useState(false);
 
       // Date Picker Logic State
       const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -1191,6 +1192,9 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                                 <button onClick={() => setIsChecklistOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors text-xs font-bold uppercase tracking-widest font-black">
                                   <Icons.ClipboardList className="w-4 h-4" /> Kalan İşler / Miktarlar
                                 </button>
+                                <button onClick={() => setIsMaterialTableModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors text-xs font-bold uppercase tracking-widest font-black">
+                                  <Icons.ExternalLink className="w-4 h-4" /> ONLİNE GELEN MALZEME LİSTESİ
+                                </button>
                             </div>
                          </div>
 
@@ -1221,6 +1225,25 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           </div>
         </div>
         <AttachmentPreviewModal isOpen={isAttachmentPreviewOpen} onClose={() => setIsAttachmentPreviewOpen(false)} attachments={demand.attachments} />
+        {isMaterialTableModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-[100] backdrop-blur-sm flex justify-center items-center p-4" onClick={() => setIsMaterialTableModalOpen(false)}>
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+                        <h3 className="text-lg font-black text-gray-800 uppercase tracking-widest">ONLİNE GELEN MALZEME LİSTESİ</h3>
+                        <button onClick={() => setIsMaterialTableModalOpen(false)} className="p-1 hover:bg-gray-200 rounded-full transition-colors">
+                            <Icons.X className="w-6 h-6 text-gray-500" />
+                        </button>
+                    </div>
+                    <div className="flex-grow relative">
+                        <iframe 
+                            src="https://docs.google.com/spreadsheets/d/1L05588TdYZmH401Lvn4_yr4zwiw2pW4EJ8dIyl-UTVQ/edit?hl=tr&gid=0#gid=0" 
+                            className="absolute inset-0 w-full h-full border-none"
+                            title="Online Gelen Malzeme Listesi"
+                        />
+                    </div>
+                </div>
+            </div>
+        )}
         </React.Fragment>
       );
     };
@@ -1231,6 +1254,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [checklistInput, setChecklistInput] = useState('');
       const [processedChecklist, setProcessedChecklist] = useState([]);
       const [manualChecklistItems, setManualChecklistItems] = useState([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
+      const [transferToMaterialList, setTransferToMaterialList] = useState(true);
+      const [showMaterialTable, setShowMaterialTable] = useState(false);
       
       const checklistFileRef = useRef(null);
       const [checklistWorkbook, setChecklistWorkbook] = useState(null);
@@ -1263,11 +1288,15 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           setChecklistInput('');
           setProcessedChecklist([]);
           setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
+          setTransferToMaterialList(true);
+          setShowMaterialTable(false);
         } else {
           setFormData({ title: '', description: '', assignedToUnits: [], assignedUnitToAdd: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '', addAssignedToList: false });
           setChecklistInput('');
           setProcessedChecklist([]);
           setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
+          setTransferToMaterialList(true);
+          setShowMaterialTable(false);
         }
         setChecklistWorkbook(null);
         setChecklistActiveSheet('');
@@ -1500,7 +1529,11 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             requestingUnit: formData.requestingUnits.join(','), 
             assignedTo: formData.assignedToUnits.join(','),
             checklistItems: checklistProgressItems 
-        });
+        }, transferToMaterialList && !demandToEdit);
+
+        if (transferToMaterialList && !demandToEdit) {
+            setShowMaterialTable(true);
+        }
       };
       
       if (!isOpen) return null;
@@ -1509,9 +1542,18 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 backdrop-blur-sm pointer-events-auto" onWheel={e=>e.stopPropagation()}>
           <div className="bg-white rounded-lg shadow-xl w-full modal-container-wide p-8 font-serif relative" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between mb-6 border-b pb-4">
-                <h2 className="text-2xl font-semibold text-gray-900 uppercase font-black tracking-widest">{demandToEdit ? 'Düzenle' : 'Yeni Kayıt'}</h2>
+                <h2 className="text-2xl font-semibold text-gray-900 uppercase font-black tracking-widest">{showMaterialTable ? 'Gelen Malzeme Listesi' : (demandToEdit ? 'Düzenle' : 'Yeni Kayıt')}</h2>
                 <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
             </div>
+            {showMaterialTable ? (
+                <div className="w-full h-[60vh] bg-white rounded-lg overflow-hidden border border-gray-200">
+                    <iframe 
+                        src="https://docs.google.com/spreadsheets/d/1L05588TdYZmH401Lvn4_yr4zwiw2pW4EJ8dIyl-UTVQ/edit?hl=tr&gid=0#gid=0" 
+                        className="w-full h-full border-none"
+                        title="Gelen Malzeme Listesi"
+                    />
+                </div>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
@@ -1691,11 +1733,23 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                         </div>
                     </div>
                 </div>
-                <div className="flex justify-end gap-4 pt-8 border-t">
+                <div className="flex justify-end items-center gap-4 pt-8 border-t">
+                    {!demandToEdit && (
+                        <label className="flex items-center gap-2 text-xs font-black text-blue-700 uppercase cursor-pointer select-none mr-auto">
+                            <input 
+                                type="checkbox" 
+                                checked={transferToMaterialList} 
+                                onChange={e => setTransferToMaterialList(e.target.checked)} 
+                                className="rounded text-blue-600 w-4 h-4" 
+                            />
+                            GELEN MALZEME LİSTESİNE AKTAR
+                        </label>
+                    )}
                     <button type="button" onClick={onClose} className="px-6 py-3 bg-gray-100 rounded-xl text-gray-900 hover:bg-gray-200 transition-colors uppercase font-black tracking-widest border border-gray-200">İptal</button>
                     <button type="submit" className={`px-12 py-3 rounded-xl font-black uppercase text-sm shadow-xl transition-all ${processedChecklist.length === 0 && checklistInput.trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 transform hover:-translate-y-0.5'}`}>KAYDET</button>
                 </div>
             </form>
+            )}
           </div>
         </div>
       );
@@ -2023,7 +2077,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const handleOpenEditModal = (demand) => { setDemandToEdit(demand); setIsModalOpen(true); };
       const handleCloseModal = () => { setIsModalOpen(false); setDemandToEdit(null); };
 
-      const handleSaveDemand = async (demandData) => {
+      const handleSaveDemand = async (demandData, shouldKeepOpen = false) => {
         const originalDemands = [...demands];
         const isEditing = !!demandData.id;
         let optimisticDemand;
@@ -2054,7 +2108,9 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         }
 
         setDemands(prev => isEditing ? prev.map(d => d.id === optimisticDemand.id ? optimisticDemand : d) : [...prev, optimisticDemand]);
-        handleCloseModal();
+        if (!shouldKeepOpen) {
+            handleCloseModal();
+        }
         setProcessingDemands(prev => new Set(prev).add(optimisticDemand.id));
 
         try {
