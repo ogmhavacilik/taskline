@@ -19,6 +19,16 @@
   
   <!-- Babel (JSX ve TypeScript Derleyicisi) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    if (typeof Babel !== 'undefined') {
+      Babel.registerPreset("custom-react", {
+        presets: [
+          [Babel.availablePresets["react"], { runtime: "classic" }],
+          Babel.availablePresets["typescript"]
+        ]
+      });
+    }
+  </script>
   
   <!-- Tailwind Konfigürasyonu -->
   <script>
@@ -120,7 +130,7 @@
   <!-- 
     UYGULAMA KODU 
   -->
-  <script type="text/babel" data-presets="react,typescript">
+  <script type="text/babel" data-presets="custom-react">
     const { useState, useEffect, useRef, useCallback } = React;
 
     // ==========================================
