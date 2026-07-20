@@ -160,11 +160,74 @@
       return jsonResponse.data;
     };
 
+    const prepareDemandForSaving = (demand) => {
+      const d = JSON.parse(JSON.stringify(demand));
+      let history = d.progressHistory || [];
+      if (!Array.isArray(history)) {
+        try {
+          history = typeof history === 'string' ? JSON.parse(history) : [];
+        } catch (e) {
+          history = [];
+        }
+      }
+
+      // ASLA VERİ SİLME/KIRPMA YAPILMAYACAK!
+      // Excel hücre limitini (32,767 karakter) aşmamak için akış geçmişini 28,000 karakterlik parçalara bölüyoruz.
+      const CHAR_LIMIT = 28000;
+      
+      let chunks = [];
+      let currentChunk = [];
+      
+      for (const item of history) {
+        const tempChunk = [...currentChunk, item];
+        if (JSON.stringify(tempChunk).length > CHAR_LIMIT) {
+          if (currentChunk.length > 0) {
+            chunks.push(currentChunk);
+            currentChunk = [item];
+          } else {
+            // Tek bir not bile limiti aşsa da silmiyoruz, tek başına bir chunk olarak kaydediyoruz
+            chunks.push([item]);
+            currentChunk = [];
+          }
+        } else {
+          currentChunk.push(item);
+        }
+      }
+      if (currentChunk.length > 0) {
+        chunks.push(currentChunk);
+      }
+
+      if (chunks.length === 0) {
+        d.progressHistory = [];
+      } else {
+        d.progressHistory = chunks[0];
+      }
+
+      // Geri kalan tüm parçaları progressHistory2, progressHistory3, ... progressHistory15 sütunlarına yerleştiriyoruz.
+      // Böylece veri kaybı kesinlikle engellenmiş olur.
+      for (let i = 2; i <= 15; i++) {
+        const chunkIndex = i - 1;
+        if (chunkIndex < chunks.length) {
+          d[`progressHistory${i}`] = chunks[chunkIndex];
+        } else {
+          d[`progressHistory${i}`] = [];
+        }
+      }
+      
+      return d;
+    };
+
     const api = {
       getDemands: () => callApi('getDemands'),
-      saveDemand: (demand) => callApi('saveDemand', demand),
+      saveDemand: (demand) => {
+        const prepared = prepareDemandForSaving(demand);
+        return callApi('saveDemand', prepared);
+      },
       deleteDemand: (id) => callApi('deleteDemand', id),
-      batchSaveDemands: (demands) => callApi('batchSaveDemands', demands),
+      batchSaveDemands: (demands) => {
+        const prepared = demands.map(d => prepareDemandForSaving(d));
+        return callApi('batchSaveDemands', prepared);
+      },
       importMaterialList: (data) => callApi('importMaterialList', data, true),
     };
 
@@ -2498,6 +2561,38 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           
           // Persistence logic: Extract last assignedTo from history if exists
           const processedData = data.map(d => {
+            // Recombine progressHistory from progressHistory2, progressHistory3, etc.
+            let combinedHistory = [];
+            if (Array.isArray(d.progressHistory)) {
+              combinedHistory = [...d.progressHistory];
+            } else if (typeof d.progressHistory === 'string') {
+              try {
+                combinedHistory = JSON.parse(d.progressHistory);
+              } catch (e) {
+                console.error("Error parsing progressHistory", e);
+              }
+            }
+
+            let i = 2;
+            while (d[`progressHistory${i}`] !== undefined && d[`progressHistory${i}`] !== null) {
+              const chunk = d[`progressHistory${i}`];
+              let parsedChunk = [];
+              if (Array.isArray(chunk)) {
+                parsedChunk = chunk;
+              } else if (typeof chunk === 'string') {
+                try {
+                  parsedChunk = JSON.parse(chunk);
+                } catch (e) {
+                  console.error(`Error parsing progressHistory${i}`, e);
+                }
+              }
+              if (Array.isArray(parsedChunk)) {
+                combinedHistory = combinedHistory.concat(parsedChunk);
+              }
+              i++;
+            }
+            d.progressHistory = combinedHistory;
+
             if (d.assignedToHistory && Array.isArray(d.assignedToHistory) && d.assignedToHistory.length > 0) {
               d.assignedTo = d.assignedToHistory[d.assignedToHistory.length - 1].description;
             }
@@ -2569,7 +2664,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
               setStoredAssignedNames(prev => Array.from(new Set([...prev, ...newNames])));
           }
         } catch (err) {
-          showToast("Talep kaydedilemedi.", "error");
+          showToast("ARKA PLANA KAYDEDİLEMEDİ! Veri excel online yazılmamış olabilir.", "error");
           setDemands(originalDemands);
         } finally {
           setProcessingDemands(prev => { const next = new Set(prev); next.delete(optimisticDemand.id); return next; });
@@ -2592,7 +2687,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                 if (result && result.success) { showToast('Talep başarıyla silindi.'); } 
                 else { throw new Error(result.message || 'Silme işlemi başarısız.'); }
             }
-            catch (err) { showToast('Talep silinemedi.', 'error'); setDemands(originalDemands); }
+            catch (err) { showToast('ARKA PLANA KAYDEDİLEMEDİ! Talep silme işlemi excel online yazılmamış olabilir.', 'error'); setDemands(originalDemands); }
         } else if (type === 'progressItem' && progressIndex !== undefined) {
             const demandToUpdate = originalDemands.find(d => d.id === demandId);
             if (!demandToUpdate) return;
@@ -2612,7 +2707,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             setSelectedDemandForProgress(updatedDemand);
             setProcessingDemands(prev => new Set(prev).add(demandId));
             try { await api.saveDemand(updatedDemand); showToast('Akış notu silindi.'); }
-            catch (err) { setDemands(originalDemands); setSelectedDemandForProgress(demandToUpdate); showToast('Akış notu silinemedi.', 'error'); }
+            catch (err) { setDemands(originalDemands); setSelectedDemandForProgress(demandToUpdate); showToast('ARKA PLANA KAYDEDİLEMEDİ! Akış notu silme işlemi excel online yazılmamış olabilir.', 'error'); }
             finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
         }
       };
@@ -2630,15 +2725,34 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         setDemands(prev => prev.map(d => d.id === demandId ? updatedDemand : d));
         setSelectedDemandForProgress(updatedDemand);
         setProcessingDemands(prev => new Set(prev).add(demandId));
-        try { await api.saveDemand(updatedDemand); showToast(successMessage, 'success'); }
-        catch (err) { setDemands(originalDemands); setSelectedDemandForProgress(originalDemands.find(d => d.id === demandId) || null); showToast(errorMessage, 'error'); }
+        try { 
+          await api.saveDemand(updatedDemand); 
+          showToast(successMessage, 'success'); 
+        }
+        catch (err) { 
+          setDemands(originalDemands); 
+          setSelectedDemandForProgress(originalDemands.find(d => d.id === demandId) || null); 
+          showToast(`ARKA PLANA KAYDEDİLEMEDİ! ${errorMessage}`, 'error'); 
+        }
         finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
       };
 
-      const handleUpdateDemandFromModal = (updatedDemand) => {
+      const handleUpdateDemandFromModal = async (updatedDemand) => {
+        const originalDemands = [...demands];
+        const originalSelected = selectedDemandForProgress;
         setDemands(prev => prev.map(d => d.id === updatedDemand.id ? updatedDemand : d));
         setSelectedDemandForProgress(updatedDemand);
-        api.saveDemand(updatedDemand).catch(err => console.error("Update failed", err));
+        setProcessingDemands(prev => new Set(prev).add(updatedDemand.id));
+        try {
+          await api.saveDemand(updatedDemand);
+          showToast('Talep güncellendi.', 'success');
+        } catch (err) {
+          setDemands(originalDemands);
+          setSelectedDemandForProgress(originalSelected);
+          showToast('ARKA PLANA KAYDEDİLEMEDİ! Güncellenen talep Excel Online\'a kaydedilemedi.', 'error');
+        } finally {
+          setProcessingDemands(prev => { const next = new Set(prev); next.delete(updatedDemand.id); return next; });
+        }
       };
       
       const handleRequestEditFromProgress = (demand) => { handleCloseProgressModal(); handleOpenEditModal(demand); };
