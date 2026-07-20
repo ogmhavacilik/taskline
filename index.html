@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbxzwmR6Bd2QOMuTzN984Z_jrpbzPeN88OWnomxhmI8e0TFL1iqyS0ZZmHh1Ln2Cg-iN/exec" />
+  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbxuivDglCOCOl32raOdzjV_gjDk6k7i70pepzYp8ak9tcc1D8t5L9gJNI2YxYXZi7wa/exec" />
   <meta name="excel-script-url" content="https://script.google.com/macros/s/AKfycbys4kKFJI87wbn155z6jphH7D5qgC45FWUvzzxi9n4-YfYDdRxY72fMWTaTGMxvkXqN-g/exec" />
   <title>Task Line</title>
   
@@ -2573,23 +2573,23 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
               }
             }
 
-            let i = 2;
-            while (d[`progressHistory${i}`] !== undefined && d[`progressHistory${i}`] !== null) {
-              const chunk = d[`progressHistory${i}`];
-              let parsedChunk = [];
-              if (Array.isArray(chunk)) {
-                parsedChunk = chunk;
-              } else if (typeof chunk === 'string') {
-                try {
-                  parsedChunk = JSON.parse(chunk);
-                } catch (e) {
-                  console.error(`Error parsing progressHistory${i}`, e);
+            for (let i = 2; i <= 15; i++) {
+              if (d[`progressHistory${i}`] !== undefined && d[`progressHistory${i}`] !== null) {
+                const chunk = d[`progressHistory${i}`];
+                let parsedChunk = [];
+                if (Array.isArray(chunk)) {
+                  parsedChunk = chunk;
+                } else if (typeof chunk === 'string') {
+                  try {
+                    parsedChunk = JSON.parse(chunk);
+                  } catch (e) {
+                    console.error(`Error parsing progressHistory${i}`, e);
+                  }
+                }
+                if (Array.isArray(parsedChunk)) {
+                  combinedHistory = combinedHistory.concat(parsedChunk);
                 }
               }
-              if (Array.isArray(parsedChunk)) {
-                combinedHistory = combinedHistory.concat(parsedChunk);
-              }
-              i++;
             }
             d.progressHistory = combinedHistory;
 
