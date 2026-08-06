@@ -68,6 +68,15 @@
   </script>
 
   <style>
+    /* ContentEditable Placeholder */
+    [contenteditable][data-placeholder]:empty:before {
+      content: attr(data-placeholder);
+      color: #9ca3af;
+      pointer-events: none;
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+
     /* Özel Scrollbar Tasarımı */
     ::-webkit-scrollbar { 
         width: 8px; 
@@ -137,27 +146,48 @@
     // BÖLÜM 1: TİPLER, SABİTLER VE API (TYPES, CONSTANTS & API)
     // ==========================================
 
-    const metaTag = document.querySelector('meta[name="google-script-url"]');
-    const excelMetaTag = document.querySelector('meta[name="excel-script-url"]');
-    const SCRIPT_URL = metaTag ? metaTag.getAttribute('content') : '';
-    const EXCEL_SCRIPT_URL = excelMetaTag ? excelMetaTag.getAttribute('content') : SCRIPT_URL;
+    const getScriptUrl = () => {
+      const metaTag = document.querySelector('meta[name="google-script-url"]');
+      return metaTag ? metaTag.getAttribute('content') : '';
+    };
+
+    const getExcelScriptUrl = () => {
+      const excelMetaTag = document.querySelector('meta[name="excel-script-url"]');
+      return excelMetaTag ? excelMetaTag.getAttribute('content') : getScriptUrl();
+    };
 
     const callApi = async (action, payload, isExcel = false) => {
-      const targetUrl = isExcel ? EXCEL_SCRIPT_URL : SCRIPT_URL;
-      if (!targetUrl) throw new Error("API URL bulunamadı");
+      const primaryUrl = isExcel ? getExcelScriptUrl() : getScriptUrl();
+      const fallbackUrl = isExcel ? getScriptUrl() : getExcelScriptUrl();
+      if (!primaryUrl && !fallbackUrl) throw new Error("API URL bulunamadı");
       
-      const res = await fetch(targetUrl, { 
-        method: 'POST', 
-        mode: 'cors', 
-        credentials: 'omit', 
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-        body: JSON.stringify({ action, payload }), 
-        redirect: 'follow' 
-      });
-      if (!res.ok) throw new Error(`API hatası: ${res.status} ${res.statusText}`);
-      const jsonResponse = await res.json();
-      if (jsonResponse.status === 'error') throw new Error(`API Hatası: ${jsonResponse.message}`);
-      return jsonResponse.data;
+      const makeRequest = async (url) => {
+        const res = await fetch(url, { 
+          method: 'POST', 
+          mode: 'cors', 
+          credentials: 'omit', 
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+          body: JSON.stringify({ action, payload }), 
+          redirect: 'follow' 
+        });
+        if (!res.ok) throw new Error(`API hatası: ${res.status} ${res.statusText}`);
+        const jsonResponse = await res.json();
+        if (jsonResponse.status === 'error') throw new Error(`API Hatası: ${jsonResponse.message}`);
+        return jsonResponse.data;
+      };
+
+      try {
+        return await makeRequest(primaryUrl);
+      } catch (err) {
+        if (fallbackUrl && fallbackUrl !== primaryUrl) {
+          try {
+            return await makeRequest(fallbackUrl);
+          } catch (fallbackErr) {
+            throw err;
+          }
+        }
+        throw err;
+      }
     };
 
     const prepareDemandForSaving = (demand) => {
@@ -374,6 +404,33 @@
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
         </svg>
       ),
+      ArrowDown: ({ className = "w-4 h-4" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" />
+        </svg>
+      ),
+      CornerDownRight: ({ className = "w-4 h-4" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 6 6v3" />
+        </svg>
+      ),
+      Bold: ({ className = "w-4 h-4" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />
+        </svg>
+      ),
+      Italic: ({ className = "w-4 h-4" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+          <line x1="19" y1="4" x2="10" y2="4" strokeLinecap="round"/>
+          <line x1="14" y1="20" x2="5" y2="20" strokeLinecap="round"/>
+          <line x1="15" y1="4" x2="9" y2="20" strokeLinecap="round"/>
+        </svg>
+      ),
+      Underline: ({ className = "w-4 h-4" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v7a6 6 0 0 0 12 0V3M4 21h16" />
+        </svg>
+      ),
       ExternalLink: ({ className = "w-5 h-5" }) => (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-4.5 0V6.375c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 10.5Z" />
@@ -387,6 +444,11 @@
       ClipboardList: ({ className = "w-5 h-5" }) => (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m.75-12h1.5a2.25 2.25 0 0 1 2.25 2.25v13.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V8.25A2.25 2.25 0 0 1 3 6h1.5m10.125-3h-4.5a.375.375 0 0 0-.375.375V4.5c0 .207.168.375.375.375h4.5a.375.375 0 0 0 .375-.375V3.375a.375.375 0 0 0-.375-.375Z" />
+        </svg>
+      ),
+      Refresh: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
         </svg>
       )
     };
@@ -562,6 +624,216 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       return (new Date(date.getTime() - offset)).toISOString().slice(0, 16);
     };
 
+    // --- Türkçe Büyük Harf Desteği ile HTML Metin Dönüştürücü ---
+    const uppercaseHtmlTextNodes = (html) => {
+      if (!html) return '';
+      return html.replace(/(<[^>]+>)|([^<]+)/g, (match, tag, text) => {
+        if (tag) return tag;
+        if (text) return text.toLocaleUpperCase('tr-TR');
+        return match;
+      });
+    };
+
+    // --- HTML İçi Link Dönüştürücü ---
+    const processLinksInHtml = (htmlStr) => {
+      if (!htmlStr) return '';
+      const urlRegex = /(?<!href=["'])((https?:\/\/[^\s<>\n\]\)]+|www\.[^\s<>\n\]\)]+))/gi;
+      return htmlStr.replace(urlRegex, (match, url) => {
+        const href = url.match(/^www\./i) ? `http://${url}` : url;
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-bold transition-colors cursor-pointer break-all inline-flex items-center gap-0.5 mx-0.5 bg-blue-50/80 hover:bg-blue-100 px-1 py-0.5 rounded border border-blue-200" onclick="event.stopPropagation()">${url}</a>`;
+      });
+    };
+
+    // --- Link ve Zengin Metin Dönüştürücü ---
+    const renderTextWithLinks = (text) => {
+      if (!text) return null;
+      const formattedText = uppercaseHtmlTextNodes(text);
+      const isHtml = /<[a-z][\s\S]*>/i.test(formattedText);
+
+      if (isHtml) {
+        const htmlWithLinks = processLinksInHtml(formattedText);
+        return (
+          <span 
+            dangerouslySetInnerHTML={{ __html: htmlWithLinks }} 
+          />
+        );
+      }
+
+      const urlRegex = /(https?:\/\/[^\s<>\n\]\)]+|www\.[^\s<>\n\]\)]+)/gi;
+      const parts = formattedText.split(urlRegex);
+      return parts.map((part, index) => {
+        if (part.match(/^https?:\/\//i) || part.match(/^www\./i)) {
+          const href = part.match(/^www\./i) ? `http://${part}` : part;
+          return (
+            <a 
+              key={index} 
+              href={href} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-blue-600 hover:text-blue-800 underline font-bold transition-colors cursor-pointer break-all inline-flex items-center gap-0.5 mx-0.5 bg-blue-50/80 hover:bg-blue-100 px-1 py-0.5 rounded border border-blue-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {part}
+              <svg className="w-3.5 h-3.5 inline-block ml-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          );
+        }
+        return part;
+      });
+    };
+
+    // --- Zengin Metin Editörü Araç Çubuğu (Rich Text Toolbar) ---
+    const RichTextToolbar = ({ editorRef, onContentChange }) => {
+      const presetColors = [
+        { label: 'Siyah', value: '#111827' },
+        { label: 'Koyu Mavi', value: '#1d4ed8' },
+        { label: 'Mavi', value: '#2563eb' },
+        { label: 'Koyu Yeşil', value: '#15803d' },
+        { label: 'Kırmızı', value: '#dc2626' },
+        { label: 'Mor', value: '#7e22ce' },
+        { label: 'Turuncu', value: '#c2410c' }
+      ];
+
+      const exec = (command, value = null) => {
+        if (editorRef.current) {
+          editorRef.current.focus();
+          document.execCommand(command, false, value);
+          if (onContentChange) onContentChange(editorRef.current.innerHTML);
+        }
+      };
+
+      return (
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-gray-100 rounded-t-lg border-b border-gray-200 text-xs text-gray-700 select-none">
+          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest mr-1">Seçim Biçimi:</span>
+          
+          <button 
+            type="button" 
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => exec('bold')}
+            className="p-1.5 rounded bg-white text-gray-700 hover:bg-gray-200 border border-gray-200 transition-all font-bold"
+            title="Seçili Alanı Kalın Yap (Bold)"
+          >
+            <Icons.Bold className="w-3.5 h-3.5" />
+          </button>
+
+          <button 
+            type="button" 
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => exec('italic')}
+            className="p-1.5 rounded bg-white text-gray-700 hover:bg-gray-200 border border-gray-200 transition-all italic"
+            title="Seçili Alanı İtalik Yap (Italic)"
+          >
+            <Icons.Italic className="w-3.5 h-3.5" />
+          </button>
+
+          <button 
+            type="button" 
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => exec('underline')}
+            className="p-1.5 rounded bg-white text-gray-700 hover:bg-gray-200 border border-gray-200 transition-all underline"
+            title="Seçili Alanın Altını Çiz (Underline)"
+          >
+            <Icons.Underline className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+          <select 
+            onChange={(e) => exec('fontName', e.target.value)}
+            className="text-[11px] bg-white border border-gray-300 rounded px-1.5 py-1 text-gray-800 font-medium focus:ring-1 focus:ring-blue-500"
+            defaultValue="Arial"
+          >
+            <option value="Arial">Sans (Standart)</option>
+            <option value="Georgia">Serif (Klasik)</option>
+            <option value="Courier New">Monospace (Kod)</option>
+            <option value="Comic Sans MS">Kursif (El Yazısı)</option>
+          </select>
+
+          <select 
+            onChange={(e) => exec('fontSize', e.target.value)}
+            className="text-[11px] bg-white border border-gray-300 rounded px-1.5 py-1 text-gray-800 font-medium focus:ring-1 focus:ring-blue-500"
+            defaultValue="3"
+          >
+            <option value="1">Küçük</option>
+            <option value="3">Normal</option>
+            <option value="5">Büyük</option>
+          </select>
+
+          <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest mr-0.5">Yazı Rengi:</span>
+          <div className="flex items-center gap-1">
+            {presetColors.map(c => (
+              <button
+                key={c.value}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => exec('foreColor', c.value)}
+                className="w-4 h-4 rounded-full border border-gray-300 hover:scale-125 transition-transform shadow-xs"
+                style={{ backgroundColor: c.value }}
+                title={`Seçili Kelime/Cümleyi ${c.label} Yap`}
+              />
+            ))}
+            <input 
+              type="color" 
+              onChange={(e) => exec('foreColor', e.target.value)}
+              className="w-5 h-5 rounded cursor-pointer border-0 p-0 bg-transparent"
+              title="Özel Rengi Seçin"
+            />
+          </div>
+
+          <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => exec('removeFormat')}
+            className="px-2 py-1 bg-white text-gray-600 hover:bg-gray-200 border border-gray-200 rounded text-[10px] font-bold uppercase tracking-tight transition-colors"
+            title="Seçili Metnin Biçimini Temizle"
+          >
+            Biçimi Temizle
+          </button>
+        </div>
+      );
+    };
+
+    // --- Zengin Metin Editörü (Rich Text Editor) ---
+    const RichTextEditor = ({ value, onChange, placeholder = "Metin giriniz...", minHeight = "80px", className = "" }) => {
+      const editorRef = useRef(null);
+
+      useEffect(() => {
+        if (editorRef.current) {
+          const currentHtml = editorRef.current.innerHTML;
+          const targetHtml = value || '';
+          if (currentHtml !== targetHtml) {
+            editorRef.current.innerHTML = targetHtml;
+          }
+        }
+      }, [value]);
+
+      const handleInput = () => {
+        if (editorRef.current) {
+          onChange(editorRef.current.innerHTML);
+        }
+      };
+
+      return (
+        <div className="border border-gray-300 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 w-full transition-all my-1">
+          <RichTextToolbar editorRef={editorRef} onContentChange={onChange} />
+          <div
+            ref={editorRef}
+            contentEditable
+            onInput={handleInput}
+            className={`p-3 outline-none overflow-y-auto uppercase text-sm leading-relaxed text-gray-900 ${className}`}
+            style={{ minHeight }}
+            data-placeholder={placeholder}
+          />
+        </div>
+      );
+    };
+
     // ==========================================
     // BÖLÜM 4: ANA BİLEŞENLER (MODALS, BOARDS)
     // ==========================================
@@ -586,6 +858,139 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [ogmCloudDidUpload, setOgmCloudDidUpload] = useState(false);
       const [ogmCloudAttachmentType, setOgmCloudAttachmentType] = useState('Talep Yazı');
       const [ogmCloudOtherAttachmentName, setOgmCloudOtherAttachmentName] = useState('');
+
+      // Yazı Biçimlendirme & Alt Not Durumları (Formatting & Sub-Notes)
+      const [textFormatting, setTextFormatting] = useState({ isBold: false, isItalic: false, isUnderline: false, fontFamily: 'sans', fontSize: 'sm', textColor: '#111827' });
+      const [activeSubNoteIndex, setActiveSubNoteIndex] = useState(null);
+      const [subNoteText, setSubNoteText] = useState('');
+      const [subNoteFormatting, setSubNoteFormatting] = useState({ isBold: false, isItalic: false, isUnderline: false, fontFamily: 'sans', fontSize: 'sm', textColor: '#1d4ed8' });
+      const [subNoteDate, setSubNoteDate] = useState(toLocalISOString(new Date()));
+      const [editingSubNote, setEditingSubNote] = useState(null);
+
+      const handleToggleSubNoteInput = (originalIndex, e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        if (activeSubNoteIndex === originalIndex) {
+          setActiveSubNoteIndex(null);
+          setSubNoteText('');
+        } else {
+          setActiveSubNoteIndex(originalIndex);
+          setSubNoteText('');
+          setSubNoteDate(toLocalISOString(new Date()));
+          setSubNoteFormatting({ isBold: false, isItalic: false, isUnderline: false, fontFamily: 'sans', fontSize: 'sm', textColor: '#1d4ed8' });
+        }
+      };
+
+      const handleSubNoteTextChange = (e) => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        const val = e.target.value.toLocaleUpperCase('tr-TR');
+        setSubNoteText(val);
+        requestAnimationFrame(() => {
+          if (e.target) e.target.setSelectionRange(start, end);
+        });
+      };
+
+      const handleStartEditSubNote = (parentOriginalIndex, subIndex, subNote, e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        const initialDate = subNote.date ? toLocalISOString(new Date(subNote.date)) : toLocalISOString(new Date());
+        setEditingSubNote({
+          parentIndex: parentOriginalIndex,
+          subIndex: subIndex,
+          text: subNote.description || '',
+          date: initialDate,
+          formatting: {
+            isBold: !!subNote.isBold,
+            isItalic: !!subNote.isItalic,
+            isUnderline: !!subNote.isUnderline,
+            fontFamily: subNote.fontFamily || 'sans',
+            fontSize: subNote.fontSize || 'xs',
+            textColor: subNote.textColor || '#1d4ed8'
+          }
+        });
+      };
+
+      const handleEditingSubNoteTextChange = (e) => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        const val = e.target.value.toLocaleUpperCase('tr-TR');
+        setEditingSubNote(prev => prev ? ({ ...prev, text: val }) : null);
+        requestAnimationFrame(() => {
+          if (e.target) e.target.setSelectionRange(start, end);
+        });
+      };
+
+      const handleSaveEditedSubNote = (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        if (!editingSubNote) return;
+        const cleanText = (editingSubNote.text || '').replace(/<[^>]*>/g, '').trim();
+        if (!cleanText && !(editingSubNote.text || '').trim()) return alert('Lütfen alt not metnini boş bırakmayınız.');
+        const { parentIndex, subIndex, text, date, formatting } = editingSubNote;
+        
+        const updatedHistory = [...demand.progressHistory];
+        const targetItem = updatedHistory[parentIndex];
+        if (targetItem) {
+          const currentSubNotes = targetItem.subNotes || [];
+          if (currentSubNotes[subIndex]) {
+            const updatedSubNotes = [...currentSubNotes];
+            const isoDate = date ? new Date(date).toISOString() : new Date().toISOString();
+            updatedSubNotes[subIndex] = {
+              ...updatedSubNotes[subIndex],
+              description: uppercaseHtmlTextNodes(text.trim()),
+              date: isoDate,
+              isBold: formatting ? formatting.isBold : false,
+              isItalic: formatting ? formatting.isItalic : false,
+              isUnderline: formatting ? formatting.isUnderline : false,
+              fontFamily: formatting ? formatting.fontFamily : 'sans',
+              fontSize: formatting ? formatting.fontSize : 'xs',
+              textColor: formatting ? formatting.textColor : '#1d4ed8'
+            };
+            updatedHistory[parentIndex] = { ...targetItem, subNotes: updatedSubNotes };
+            onEditDemand({ ...demand, progressHistory: updatedHistory });
+          }
+        }
+        setEditingSubNote(null);
+      };
+
+      const handleAddSubNote = (parentOriginalIndex, e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        const cleanText = (subNoteText || '').replace(/<[^>]*>/g, '').trim();
+        if (!cleanText && !(subNoteText || '').trim()) return alert('Lütfen alt not yazınız.');
+        const isoDate = subNoteDate ? new Date(subNoteDate).toISOString() : new Date().toISOString();
+        const newSubNote = {
+          id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+          date: isoDate,
+          description: uppercaseHtmlTextNodes(subNoteText.trim()),
+          isBold: subNoteFormatting.isBold,
+          isItalic: subNoteFormatting.isItalic,
+          isUnderline: subNoteFormatting.isUnderline,
+          fontFamily: subNoteFormatting.fontFamily,
+          fontSize: subNoteFormatting.fontSize,
+          textColor: subNoteFormatting.textColor
+        };
+
+        const updatedHistory = [...demand.progressHistory];
+        const targetItem = updatedHistory[parentOriginalIndex];
+        if (targetItem) {
+          const updatedSubNotes = [...(targetItem.subNotes || []), newSubNote];
+          updatedHistory[parentOriginalIndex] = { ...targetItem, subNotes: updatedSubNotes };
+          onEditDemand({ ...demand, progressHistory: updatedHistory });
+        }
+        setActiveSubNoteIndex(null);
+        setSubNoteText('');
+      };
+
+      const handleDeleteSubNote = (parentOriginalIndex, subNoteIndex, e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        const updatedHistory = [...demand.progressHistory];
+        const targetItem = updatedHistory[parentOriginalIndex];
+        if (targetItem) {
+          const currentSubNotes = targetItem.subNotes || [];
+          const updatedSubNotes = currentSubNotes.filter((_, idx) => idx !== subNoteIndex);
+          updatedHistory[parentOriginalIndex] = { ...targetItem, subNotes: updatedSubNotes };
+          onEditDemand({ ...demand, progressHistory: updatedHistory });
+        }
+        setEditingSubNote(null);
+      };
       
       // Checklist Side Panel State
       const [isChecklistOpen, setIsChecklistOpen] = useState(false);
@@ -867,10 +1272,16 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         setEditingItem({ 
             index: item.originalIndex, 
             description: item.description, 
-            date: item.date.split('T')[0],
+            date: item.date ? item.date.slice(0, 16) : toLocalISOString(new Date()),
             isReminder: !!item.reminderDate,
             isKalanIsler: !!item.isKalanIsler,
-            reminderDate: item.reminderDate ? item.reminderDate.slice(0, 16) : ''
+            reminderDate: item.reminderDate ? item.reminderDate.slice(0, 16) : '',
+            isBold: !!item.isBold,
+            isItalic: !!item.isItalic,
+            isUnderline: !!item.isUnderline,
+            fontFamily: item.fontFamily || 'sans',
+            fontSize: item.fontSize || 'sm',
+            textColor: item.textColor || '#111827'
         });
       };
 
@@ -880,9 +1291,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           if (!editingItem || !demand) return;
           const originalItem = demand.progressHistory[editingItem.index];
           if (!originalItem) return;
-          const originalDate = new Date(originalItem.date);
-          const [year, month, day] = editingItem.date.split('-').map(Number);
-          const newDate = new Date(year, month - 1, day, originalDate.getHours(), originalDate.getMinutes());
+          if (!window.confirm('Akış notundaki değişiklikleri kaydetmek istediğinizden emin misiniz?')) return;
+          const newDate = editingItem.date ? new Date(editingItem.date) : new Date(originalItem.date);
           
           const updatedItem = { 
               ...originalItem, 
@@ -890,7 +1300,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
               date: newDate.toISOString(),
               isKalanIsler: editingItem.isKalanIsler,
               reminderDate: editingItem.isReminder && editingItem.reminderDate ? new Date(editingItem.reminderDate).toISOString() : undefined,
-              reminderRead: editingItem.isReminder ? (editingItem.reminderDate === originalItem.reminderDate ? originalItem.reminderRead : false) : false
+              reminderRead: editingItem.isReminder ? (editingItem.reminderDate === originalItem.reminderDate ? originalItem.reminderRead : false) : false,
+              isBold: editingItem.isBold,
+              isItalic: editingItem.isItalic,
+              isUnderline: editingItem.isUnderline,
+              fontFamily: editingItem.fontFamily,
+              fontSize: editingItem.fontSize,
+              textColor: editingItem.textColor
           };
           onEditProgressItem(demand.id, editingItem.index, updatedItem, originalItem);
           setEditingItem(null);
@@ -907,7 +1323,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       };
 
       const parseProgressText = (text, isSupport, supportPerson, dateOverride, isChecklist = false) => {
-        const lines = text.trim().split('\n').filter(line => line.trim() !== '');
+        const isHtml = /<[a-z][\s\S]*>/i.test(text);
+        const lines = isHtml ? [text.trim()] : text.trim().split('\n').filter(line => line.trim() !== '');
         return lines.map(line => ({ 
             date: new Date(dateOverride).toISOString(), 
             description: line.trim().toLocaleUpperCase('tr-TR'), 
@@ -915,7 +1332,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             supportPerson: isSupport ? supportPerson : undefined,
             isKalanIsler: isChecklist || isKalanIsler,
             reminderDate: isReminder && reminderDate ? new Date(reminderDate).toISOString() : undefined,
-            reminderRead: false
+            reminderRead: false,
+            isBold: textFormatting.isBold,
+            isItalic: textFormatting.isItalic,
+            isUnderline: textFormatting.isUnderline,
+            fontFamily: textFormatting.fontFamily,
+            fontSize: textFormatting.fontSize,
+            textColor: textFormatting.textColor
         }));
       };
 
@@ -931,6 +1354,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           }
           if (!textToParse) return alert("Akış notu giriniz.");
           
+          if (!window.confirm('Yeni akış notunu eklemek istediğinizden emin misiniz?')) return;
           const parsedItems = parseProgressText(textToParse, isSupportNote, selectedSupportPerson, customDate);
           if (parsedItems.length > 0) {
               onAddProgressItems(demand.id, parsedItems);
@@ -982,6 +1406,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const handleSaveChecklist = () => {
         const itemsWithNames = checklistItems.filter(i => i.name.trim() !== '');
         if (itemsWithNames.length === 0) return alert('Lütfen malzeme adı giriniz.');
+        if (!window.confirm('Kalan işler listesindeki değişiklikleri akışa kaydetmek istediğinizden emin misiniz?')) return;
         
         const otherHistory = demand.progressHistory.filter(h => !h.isKalanIsler);
         
@@ -1178,7 +1603,12 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       };
 
       const handleStartCompletion = () => { setIsConfirmingCompletion(true); setCompletionDate(new Date().toISOString().split('T')[0]); };
-      const handleConfirmCompletion = () => { if (completionDate) onCompleteDemand(demand.id, completionDate, completionNote.toLocaleUpperCase('tr-TR')); };
+      const handleConfirmCompletion = () => { 
+        if (completionDate) {
+          if (!window.confirm('Talebi tamamlandı olarak işaretlemek istediğinizden emin misiniz?')) return;
+          onCompleteDemand(demand.id, completionDate, completionNote.toLocaleUpperCase('tr-TR')); 
+        }
+      };
       
       const handleExportSingleDemand = () => {
         const headers = ['TARİH', 'AÇIKLAMA', 'NOT TÜRÜ'];
@@ -1298,10 +1728,23 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                                  )}
                                 
                                 {editingItem && editingItem.index === item.originalIndex ? (
-                                  <div className="space-y-3">
-                                    <textarea value={editingItem.description} onChange={handleEditItemDescriptionChange} className="w-full p-2 border rounded text-gray-900 uppercase tracking-tighter" rows={3}/>
+                                  <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                                    <TextFormattingToolbar formatting={editingItem} onChange={(newF) => setEditingItem(prev => prev ? ({...prev, ...newF}) : null)} />
+                                    <textarea 
+                                      value={editingItem.description} 
+                                      onChange={handleEditItemDescriptionChange} 
+                                      style={{ 
+                                        color: editingItem.textColor || '#111827', 
+                                        fontFamily: editingItem.fontFamily === 'serif' ? 'Georgia, serif' : editingItem.fontFamily === 'mono' ? 'monospace' : editingItem.fontFamily === 'cursive' ? 'cursive' : 'inherit' 
+                                      }}
+                                      className={`w-full p-2.5 border border-gray-300 rounded-lg uppercase tracking-tighter transition-all ${editingItem.fontSize === 'xs' ? 'text-xs' : editingItem.fontSize === 'base' ? 'text-base' : 'text-sm'} ${editingItem.isBold ? 'font-bold' : 'font-normal'} ${editingItem.isItalic ? 'italic' : ''} ${editingItem.isUnderline ? 'underline' : ''}`} 
+                                      rows={3}
+                                    />
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <input type="date" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border rounded text-gray-900" />
+                                        <div className="flex flex-col gap-1">
+  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Tarih & Saat:</label>
+  <input type="datetime-local" value={editingItem.date} onChange={(e) => setEditingItem(prev => prev ? {...prev, date: e.target.value} : null)} className="w-full p-2 border border-gray-300 rounded text-xs font-bold text-gray-900 focus:ring-1 focus:ring-blue-500" />
+</div>
                                         <div className="flex flex-col gap-2">
                                             <div className="flex flex-wrap gap-2">
                                                 <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-widest">
@@ -1343,19 +1786,188 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                                             {new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}
                                         </span>
                                         {item.isEditable && (
-                                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => handleStartEdit(item)} className="p-1 hover:bg-gray-200 rounded text-gray-500" title="Notu Düzenle"><Icons.Edit className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => onRequestDeleteProgressItem(demand.id, item.originalIndex, item.description)} className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                                          <div className="flex items-center gap-1.5">
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => handleToggleSubNoteInput(item.originalIndex, e)} 
+                                              className="px-2 py-1 bg-blue-100 hover:bg-blue-200 border border-blue-300 text-blue-700 rounded transition-all flex items-center gap-1 font-bold text-xs shadow-sm cursor-pointer" 
+                                              title="Akış Alt Notu Ekle"
+                                            >
+                                              <Icons.ArrowDown className="w-3.5 h-3.5" />
+                                              <span className="text-[10px] font-black uppercase">Alt Not Ekle</span>
+                                            </button>
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleStartEdit(item); }} 
+                                              className="p-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 rounded transition-all shadow-sm cursor-pointer" 
+                                              title="Notu Düzenle"
+                                            >
+                                              <Icons.Edit className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRequestDeleteProgressItem(demand.id, item.originalIndex, item.description); }} 
+                                              className="p-1.5 bg-red-100 hover:bg-red-200 border border-red-300 text-red-600 rounded transition-all shadow-sm cursor-pointer" 
+                                              title="Notu Sil"
+                                            >
+                                              <Icons.Trash className="w-3.5 h-3.5" />
+                                            </button>
                                           </div>
                                         )}
                                     </div>
                                     {isSupport && <div className="text-xs font-bold text-orange-700 mb-1 uppercase tracking-tighter">Destek Personeli: {item.supportPerson}</div>}
                                     <div className="flex items-start gap-2">
                                       <input type="checkbox" checked={!!isKalan} readOnly className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                                      <div className={`text-gray-800 whitespace-pre-wrap leading-relaxed uppercase font-medium tracking-tight ${isReminderActive ? 'animate-flash text-red-600 font-bold' : ''}`}>
-                                        {item.description.toLocaleUpperCase('tr-TR')}
+                                      <div 
+                                        style={{ 
+                                          color: item.textColor || '#1f2937', 
+                                          fontFamily: item.fontFamily === 'serif' ? 'Georgia, serif' : item.fontFamily === 'mono' ? 'monospace' : item.fontFamily === 'cursive' ? 'cursive' : 'inherit' 
+                                        }}
+                                        className={`whitespace-pre-wrap leading-relaxed tracking-tight ${item.fontSize === 'xs' ? 'text-xs' : item.fontSize === 'base' ? 'text-base' : 'text-sm'} ${item.isBold ? 'font-bold' : 'font-medium'} ${item.isItalic ? 'italic' : ''} ${item.isUnderline ? 'underline' : ''} ${isReminderActive ? 'animate-flash text-red-600 font-bold' : ''}`}
+                                      >
+                                        {renderTextWithLinks(item.description.toLocaleUpperCase('tr-TR'))}
                                       </div>
                                     </div>
+
+                                    {/* Alt Notlar Listesi (Rengi Hafif Mavi) */}
+                                    {item.subNotes && item.subNotes.length > 0 && (
+                                      <div className="mt-3 space-y-2 border-l-2 border-blue-400 pl-3">
+                                        <div className="text-[10px] font-black text-blue-800 uppercase tracking-widest flex items-center gap-1">
+                                          <Icons.CornerDownRight className="w-3.5 h-3.5 text-blue-600" />
+                                          Akış Alt Notları ({item.subNotes.length})
+                                        </div>
+                                        {item.subNotes.map((sub, sIdx) => {
+                                          const isEditingThisSub = editingSubNote && editingSubNote.parentIndex === item.originalIndex && editingSubNote.subIndex === sIdx;
+                                          const displaySubDate = sub.date ? new Date(sub.date) : new Date();
+                                          const validSubDate = !isNaN(displaySubDate.getTime()) ? displaySubDate.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+                                          return (
+                                            <div key={sub.id || sIdx} className="bg-blue-50/90 border border-blue-200 rounded-lg p-2.5 text-xs relative group/sub hover:bg-blue-100/90 transition-all shadow-sm">
+                                              <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1">
+                                                  <Icons.Clock className="w-3 h-3 text-blue-600" />
+                                                  {validSubDate}
+                                                </span>
+                                                {item.isEditable && (
+                                                  <div className="flex items-center gap-1.5">
+                                                    <button 
+                                                      type="button"
+                                                      onClick={(e) => handleStartEditSubNote(item.originalIndex, sIdx, sub, e)} 
+                                                      className="p-1.5 text-blue-600 bg-blue-100 hover:bg-blue-200 border border-blue-300 rounded transition-all shadow-sm cursor-pointer"
+                                                      title="Alt Notu Düzenle"
+                                                    >
+                                                      <Icons.Edit className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button 
+                                                      type="button"
+                                                      onClick={(e) => handleDeleteSubNote(item.originalIndex, sIdx, e)} 
+                                                      className="p-1.5 text-red-600 bg-red-100 hover:bg-red-200 border border-red-300 rounded transition-all shadow-sm cursor-pointer"
+                                                      title="Alt Notu Sil"
+                                                    >
+                                                      <Icons.Trash className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  </div>
+                                                )}
+                                              </div>
+                                              {isEditingThisSub ? (
+                                                <div className="mt-2 space-y-2 bg-white p-2.5 rounded-lg border border-blue-300 shadow-sm">
+                                                  <div className="flex items-center gap-2 mb-1 bg-blue-50/70 p-2 rounded-lg border border-blue-200">
+                                                    <label className="text-[10px] font-black text-blue-800 uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                                      <Icons.Clock className="w-3.5 h-3.5 text-blue-600" /> Tarih & Saat:
+                                                    </label>
+                                                    <input 
+                                                      type="datetime-local" 
+                                                      value={editingSubNote.date} 
+                                                      onChange={(e) => setEditingSubNote(prev => prev ? ({ ...prev, date: e.target.value }) : null)} 
+                                                      className="p-1 border border-blue-300 rounded text-xs font-bold text-gray-900 bg-white focus:ring-1 focus:ring-blue-500" 
+                                                    />
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setEditingSubNote(prev => prev ? ({ ...prev, date: toLocalISOString(new Date()) }) : null)}
+                                                      className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-300 rounded text-[10px] font-black uppercase tracking-wider cursor-pointer"
+                                                      title="Bugünün tarihini ve saatini ayarla"
+                                                    >
+                                                      Bugün
+                                                    </button>
+                                                  </div>
+                                                  <RichTextEditor 
+                                                     value={editingSubNote.text} 
+                                                     onChange={(val) => setEditingSubNote(prev => prev ? ({ ...prev, text: val }) : null)} 
+                                                     placeholder="Alt not metni..." 
+                                                     minHeight="70px"
+                                                   />
+                                                  <div className="flex justify-end gap-2">
+                                                    <button 
+                                                      type="button"
+                                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingSubNote(null); }} 
+                                                      className="px-3 py-1.5 bg-gray-200 text-gray-700 hover:bg-gray-300 rounded text-xs font-bold uppercase cursor-pointer"
+                                                    >
+                                                      İptal
+                                                    </button>
+                                                    <button 
+                                                      type="button"
+                                                      onClick={(e) => handleSaveEditedSubNote(e)} 
+                                                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-black uppercase shadow-sm cursor-pointer"
+                                                    >
+                                                      Kaydet
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              ) : (
+                                                <div 
+                                                  style={{ 
+                                                    color: sub.textColor || '#1e3a8a', 
+                                                    fontFamily: sub.fontFamily === 'serif' ? 'Georgia, serif' : sub.fontFamily === 'mono' ? 'monospace' : sub.fontFamily === 'cursive' ? 'cursive' : 'inherit' 
+                                                  }}
+                                                  className={`whitespace-pre-wrap leading-relaxed ${sub.fontSize === 'xs' ? 'text-[11px]' : sub.fontSize === 'base' ? 'text-sm' : 'text-xs'} ${sub.isBold ? 'font-bold' : 'font-medium'} ${sub.isItalic ? 'italic' : ''} ${sub.isUnderline ? 'underline' : ''}`}
+                                                >
+                                                  {renderTextWithLinks(sub.description)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+
+                                    {/* Alt Not Ekleme Giriş Alanı */}
+                                    {activeSubNoteIndex === item.originalIndex && (
+                                      <div className="mt-3 p-3 bg-blue-50 border border-blue-300 rounded-xl space-y-2 shadow-md">
+                                        <div className="flex justify-between items-center text-xs font-bold text-blue-800 uppercase tracking-widest">
+                                          <span className="flex items-center gap-1"><Icons.ArrowDown className="w-3.5 h-3.5 text-blue-600"/> Akış Alt Notu Ekle</span>
+                                          <button type="button" onClick={() => setActiveSubNoteIndex(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><Icons.X className="w-4 h-4"/></button>
+                                        </div>
+                                        <div className="flex items-center gap-2 bg-white/90 p-2 rounded-lg border border-blue-200">
+                                          <label className="text-[10px] font-black text-blue-800 uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                            <Icons.Clock className="w-3.5 h-3.5 text-blue-600" /> Tarih & Saat:
+                                          </label>
+                                          <input 
+                                            type="datetime-local" 
+                                            value={subNoteDate} 
+                                            onChange={(e) => setSubNoteDate(e.target.value)} 
+                                            className="p-1 border border-blue-300 rounded text-xs font-bold text-gray-900 bg-white focus:ring-1 focus:ring-blue-500" 
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => setSubNoteDate(toLocalISOString(new Date()))}
+                                            className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-300 rounded text-[10px] font-black uppercase tracking-wider cursor-pointer"
+                                            title="Bugünün tarihini ve saatini ayarla"
+                                          >
+                                            Bugün
+                                          </button>
+                                        </div>
+                                        <RichTextEditor 
+                                           value={subNoteText} 
+                                           onChange={setSubNoteText} 
+                                           placeholder="Alt notunuzu buraya giriniz (Fare ile seçip yukarıdan biçim verebilirsiniz)..." 
+                                           minHeight="70px"
+                                         />
+                                        <div className="flex justify-end gap-2">
+                                          <button type="button" onClick={() => setActiveSubNoteIndex(null)} className="px-3 py-1.5 bg-gray-200 text-gray-700 hover:bg-gray-300 rounded text-xs font-bold uppercase tracking-wider cursor-pointer">İptal</button>
+                                          <button type="button" onClick={(e) => handleAddSubNote(item.originalIndex, e)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer">Alt Notu Kaydet</button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -1539,13 +2151,14 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                          </div>
 
                          <div className="flex gap-2 items-start">
-                             <textarea 
-                                value={newProgressText} 
-                                onChange={handleNewProgressTextChange}
-                                rows={2} 
-                                className="flex-grow rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm p-3 text-gray-900 uppercase font-bold tracking-tight" 
-                                placeholder="Akış notu giriniz..." 
-                             />
+                             <div className="flex-grow">
+                               <RichTextEditor 
+                                 value={newProgressText} 
+                                 onChange={setNewProgressText} 
+                                 placeholder="Akış notu giriniz (Metni fare ile seçip yukarıdan biçimlendirebilirsiniz)..." 
+                                 minHeight="80px"
+                               />
+                             </div>
                              <div className="flex flex-col gap-2 w-24 shrink-0">
                                  <button onClick={() => { handlePreview(); handleCloseModal(); }} disabled={!newProgressText.trim() && !hasDeliveredDocument} className="w-full py-1 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase font-black tracking-widest">
                                      Ekle
@@ -2032,6 +2645,9 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           return alert("Lütfen yapıştırılan veriyi AKTAR butonuna basarak checklist'e dönüştürün.");
         }
 
+        const confirmMsg = demandToEdit ? "Talep değişikliklerini kaydetmek istediğinizden emin misiniz?" : "Yeni talebi kaydetmek istediğinizden emin misiniz?";
+        if (!window.confirm(confirmMsg)) return;
+
         let finalChecklistItems = [...processedChecklist];
         manualChecklistItems.forEach(item => {
             if (item.name.trim()) {
@@ -2115,9 +2731,14 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                 </div>
 
                 <div className="space-y-2">
-                   <label className="text-sm font-black text-gray-700 uppercase tracking-widest">Açıklama</label>
-                   <textarea placeholder="Açıklama" value={formData.description} onChange={handleDescriptionChange} className="w-full border p-3 rounded text-gray-900 uppercase font-medium tracking-tight" rows={3}/>
-                </div>
+   <label className="text-sm font-black text-gray-700 uppercase tracking-widest">Açıklama</label>
+   <RichTextEditor 
+     value={formData.description} 
+     onChange={(val) => setFormData(prev => ({ ...prev, description: val }))} 
+     placeholder="Açıklama" 
+     minHeight="90px"
+   />
+</div>
                 
                 <div className="border border-purple-100 p-4 rounded-xl bg-purple-50/30 space-y-4">
                     <label className="block text-sm font-black text-purple-700 uppercase flex items-center gap-2 tracking-widest">
@@ -2348,7 +2969,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           {demand.assignedTo && (
               <div className="text-[10px] text-blue-700 font-black mb-2 uppercase tracking-widest truncate" title={demand.assignedTo}>İşi Alan: {demand.assignedTo}</div>
           )}
-          <p className="text-sm text-gray-600 mb-4 break-words flex-grow line-clamp-3 uppercase font-bold tracking-tight leading-tight">{demand.description}</p>
+          <p className="text-sm text-gray-600 mb-4 break-words flex-grow line-clamp-3 uppercase font-bold tracking-tight leading-tight">{renderTextWithLinks(demand.description)}</p>
           <div className="border-t border-gray-200 pt-3 mt-auto space-y-2">
             {isPartiallyCompleted && demand.status !== DemandStatus.TAMAMLANDI && (
                <div className="text-green-800 font-bold text-xs uppercase tracking-tight font-black">Kısmen Tamamlanmış</div>
@@ -2381,7 +3002,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
     };
 
     // --- KanbanColumn ---
-    const KanbanColumn = ({ status, demands, onEdit, onShowProgress, onRequestDelete, processingDemands, currentTime }) => {
+    const KanbanColumn = ({ status, demands, onEdit, onShowProgress, onRequestDelete, processingDemands, currentTime, isRetrying, isFetchFailed, retryCount, onRetryNow }) => {
       const statusStyles = {
         [DemandStatus.YENI]: { border: 'border-blue-500', text: 'text-blue-600' },
         [DemandStatus.ISLEMDE]: { border: 'border-orange-500', text: 'text-orange-600' },
@@ -2398,11 +3019,40 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
               <span className="text-sm bg-gray-200 text-gray-600 rounded-full px-2.5 py-0.5 font-black">{demands.length}</span>
             </h3>
           </div>
-          <div className="flex-grow">
+          <div className="flex-grow flex flex-col justify-start">
             {demands.map((demand, idx) => <KanbanCard key={demand.id} demand={demand} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} isProcessing={processingDemands.has(demand.id)} currentTime={currentTime} sequenceNumber={demand.displaySequence || (idx + 1)} />)}
             {demands.length === 0 && (
-              <div className="flex items-center justify-center h-full text-center text-sm text-gray-500 py-10 uppercase font-black tracking-widest opacity-25">
-                <div className="bg-white/50 p-8 rounded-lg border-2 border-dashed border-gray-300">Bu bölümde talep bulunmuyor.</div>
+              <div className="flex-1 flex items-center justify-center min-h-[350px] text-center p-6 my-auto">
+                {(isRetrying || isFetchFailed) ? (
+                  <div className="bg-white/95 backdrop-blur-md p-8 rounded-2xl border-2 border-blue-400 shadow-xl max-w-md w-full space-y-4 animate-pulse">
+                    <div className="flex items-center justify-center gap-3 text-blue-600">
+                      <Icons.Refresh className="w-8 h-8 animate-spin text-blue-600" />
+                      <span className="text-base font-black uppercase tracking-wider">VERİ ÇEKİLMEYE TEKRAR DENENİYOR...</span>
+                    </div>
+                    <p className="text-xs text-gray-600 font-bold uppercase tracking-widest leading-relaxed">
+                      Sunucudan veri henüz çekilemedi. Sayfa yenilenmeden arka planda hızlı bir şekilde veri çekilmeye çalışılıyor.
+                    </p>
+                    {retryCount > 0 && (
+                      <div className="text-[11px] font-extrabold text-blue-700 bg-blue-50 py-1.5 px-3 rounded-full inline-block border border-blue-200 uppercase tracking-widest">
+                        Otomatik Deneme Sayısı: #{retryCount}
+                      </div>
+                    )}
+                    <div className="pt-2 flex justify-center">
+                      <button 
+                        type="button" 
+                        onClick={onRetryNow} 
+                        className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-widest rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Icons.Refresh className="w-4 h-4" />
+                        <span>ŞİMDİ TEKRAR DENE</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white/60 p-8 rounded-2xl border-2 border-dashed border-gray-300 text-gray-400 font-black text-sm uppercase tracking-widest opacity-60">
+                    Bu bölümde talep bulunmuyor.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2411,10 +3061,10 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
     };
 
     // --- KanbanBoard ---
-    const KanbanBoard = ({ demands, onEdit, activeStatus, onShowProgress, onRequestDelete, processingDemands, currentTime }) => (
+    const KanbanBoard = ({ demands, onEdit, activeStatus, onShowProgress, onRequestDelete, processingDemands, currentTime, isRetrying, isFetchFailed, retryCount, onRetryNow }) => (
       <div className="px-4 sm:px-6 md:px-8 pb-8 pt-4">
         <div className="w-full">
-          <KanbanColumn key={activeStatus} status={activeStatus} demands={demands} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} processingDemands={processingDemands} currentTime={currentTime} />
+          <KanbanColumn key={activeStatus} status={activeStatus} demands={demands} onEdit={onEdit} onShowProgress={onShowProgress} onRequestDelete={onRequestDelete} processingDemands={processingDemands} currentTime={currentTime} isRetrying={isRetrying} isFetchFailed={isFetchFailed} retryCount={retryCount} onRetryNow={onRetryNow} />
         </div>
       </div>
     );
@@ -2426,13 +3076,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTcwam1sYXJkazRoMTUxMWM1b2h6MTUwZDY1MXo5eThraGw4dG5kMCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/n7frjzkahqcqyik0o3/giphy.gif" alt="Logo" className="h-12 w-auto mix-blend-multiply" />
             <h1 className="text-xl font-bold text-gray-800 hidden sm:block uppercase tracking-widest font-black">Task Line</h1>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
           {showUploadButton && (
-            <button onClick={onUpload} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors uppercase font-black text-sm tracking-widest shadow-md">
+            <button onClick={onUpload} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors uppercase font-black text-xs sm:text-sm tracking-widest shadow-md">
               <Icons.CloudUp className="w-5 h-5" /><span>Veri Yükle</span>
             </button>
           )}
-          <button onClick={onAddDemand} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors uppercase font-black text-sm tracking-widest shadow-md">
+          <button onClick={onAddDemand} className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors uppercase font-black text-xs sm:text-sm tracking-widest shadow-md">
             <Icons.Plus className="w-5 h-5" /><span>Yeni Talep Oluştur</span>
           </button>
         </div>
@@ -2522,6 +3172,9 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [loading, setLoading] = useState(true);
       const [isAppVisible, setIsAppVisible] = useState(false);
       const [error, setError] = useState(null);
+      const [isRetrying, setIsRetrying] = useState(false);
+      const [retryCount, setRetryCount] = useState(0);
+      const [isFetchFailed, setIsFetchFailed] = useState(false);
       const [processingDemands, setProcessingDemands] = useState(new Set());
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [demandToEdit, setDemandToEdit] = useState(null);
@@ -2551,12 +3204,21 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           return () => clearInterval(timer);
       }, []);
 
+      useEffect(() => {
+        if (demands && demands.length > 0) {
+          try {
+            localStorage.setItem('task_line_demands_cache', JSON.stringify(demands));
+          } catch (e) { console.error("Cache write error:", e); }
+        }
+      }, [demands]);
+
       const showToast = (message, type = 'success') => setToast({ id: Date.now(), message, type });
 
       const refreshDemands = useCallback(async (isSilent = false) => {
         try {
-          if (!isSilent && demands.length > 0) setLoading(true);
+          if (!isSilent && demands.length === 0) setLoading(true);
           setError(null);
+          if (demands.length === 0) setIsRetrying(true);
           const data = await api.getDemands();
           
           // Persistence logic: Extract last assignedTo from history if exists
@@ -2600,22 +3262,61 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           });
 
           setDemands(processedData);
+          setIsFetchFailed(false);
+          setIsRetrying(false);
+          setRetryCount(0);
+          try {
+            localStorage.setItem('task_line_demands_cache', JSON.stringify(processedData));
+          } catch (e) {}
           
           // Extract unique assigned names for filters
           const names = Array.from(new Set(processedData.flatMap(d => d.assignedTo ? d.assignedTo.split(',').map(s => s.trim()) : []).filter(n => !!n)));
           setStoredAssignedNames(names);
         } catch (err) {
           const errorMessage = err.message || 'Bilinmeyen bir hata oluştu.';
-          setError(`Veriler yüklenemedi: ${errorMessage}`);
-          console.error(err);
+          console.warn("API GetDemands Hatası:", err);
+          setError(null);
+          setIsFetchFailed(true);
+          setIsRetrying(true);
+          setRetryCount(prev => prev + 1);
+
+          // Eşzamanlı önbellek okuma denemesi
+          try {
+            const cached = localStorage.getItem('task_line_demands_cache');
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setDemands(prev => prev.length === 0 ? parsed : prev);
+              }
+            }
+          } catch (e) {}
         } finally {
             setLoading(false);
             setIsAppVisible(true);
         }
-      }, [demands]);
+      }, [demands.length]);
 
       useEffect(() => { refreshDemands(); }, []);
+
+      // Sayfa yenilemeden ilk açılışta veri çekilemediğinde arka planda makul sürelerle deneme döngüsü (maksimum 3 otomatik deneme)
+      useEffect(() => {
+        let retryTimer;
+        if (isFetchFailed && !loading && retryCount < 3) {
+          retryTimer = setTimeout(() => {
+            setIsRetrying(true);
+            refreshDemands(true);
+          }, 10000); // 10 saniyede bir kontrollü deneme
+        }
+        return () => clearTimeout(retryTimer);
+      }, [isFetchFailed, loading, retryCount, refreshDemands]);
+
+      const handleManualRetry = () => {
+        setIsRetrying(true);
+        refreshDemands(false);
+      };
       
+
+
       const handleOpenAddModal = () => { setDemandToEdit(null); setIsModalOpen(true); };
       const handleOpenEditModal = (demand) => { setDemandToEdit(demand); setIsModalOpen(true); };
       const handleCloseModal = () => { setIsModalOpen(false); setDemandToEdit(null); };
@@ -2650,7 +3351,10 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             optimisticDemand.assignedToHistory = aHistory;
         }
 
-        setDemands(prev => isEditing ? prev.map(d => d.id === optimisticDemand.id ? optimisticDemand : d) : [...prev, optimisticDemand]);
+        const nextDemands = isEditing ? demands.map(d => d.id === optimisticDemand.id ? optimisticDemand : d) : [...demands, optimisticDemand];
+        setDemands(nextDemands);
+        try { localStorage.setItem('task_line_demands_cache', JSON.stringify(nextDemands)); } catch (e) {}
+
         if (!shouldKeepOpen) {
             handleCloseModal();
         }
@@ -2664,8 +3368,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
               setStoredAssignedNames(prev => Array.from(new Set([...prev, ...newNames])));
           }
         } catch (err) {
-          showToast("ARKA PLANA KAYDEDİLEMEDİ! Veri excel online yazılmamış olabilir.", "error");
-          setDemands(originalDemands);
+          showToast("Excel Online'a kaydedilemedi (" + (err.message || 'Sunucu Hatası') + "). Lütfen bağlantınızı kontrol ediniz.", "error");
         } finally {
           setProcessingDemands(prev => { const next = new Set(prev); next.delete(optimisticDemand.id); return next; });
         }
@@ -2681,13 +3384,15 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         setDeletionTarget(null);
 
         if (type === 'demand') {
-            setDemands(prev => prev.filter(d => d.id !== demandId));
+            const nextDemands = demands.filter(d => d.id !== demandId);
+            setDemands(nextDemands);
+            try { localStorage.setItem('task_line_demands_cache', JSON.stringify(nextDemands)); } catch (e) {}
             try { 
                 const result = await api.deleteDemand(demandId);
                 if (result && result.success) { showToast('Talep başarıyla silindi.'); } 
                 else { throw new Error(result.message || 'Silme işlemi başarısız.'); }
             }
-            catch (err) { showToast('ARKA PLANA KAYDEDİLEMEDİ! Talep silme işlemi excel online yazılmamış olabilir.', 'error'); setDemands(originalDemands); }
+            catch (err) { showToast('Excel Online\'dan silinemedi (' + (err.message || 'Sunucu Hatası') + ').', 'error'); }
         } else if (type === 'progressItem' && progressIndex !== undefined) {
             const demandToUpdate = originalDemands.find(d => d.id === demandId);
             if (!demandToUpdate) return;
@@ -2703,11 +3408,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             });
 
             const updatedDemand = { ...demandToUpdate, progressHistory: updatedHistory };
-            setDemands(prev => prev.map(d => d.id === demandId ? updatedDemand : d));
+            const nextDemands = demands.map(d => d.id === demandId ? updatedDemand : d);
+            setDemands(nextDemands);
             setSelectedDemandForProgress(updatedDemand);
+            try { localStorage.setItem('task_line_demands_cache', JSON.stringify(nextDemands)); } catch (e) {}
             setProcessingDemands(prev => new Set(prev).add(demandId));
             try { await api.saveDemand(updatedDemand); showToast('Akış notu silindi.'); }
-            catch (err) { setDemands(originalDemands); setSelectedDemandForProgress(demandToUpdate); showToast('ARKA PLANA KAYDEDİLEMEDİ! Akış notu silme işlemi excel online yazılmamış olabilir.', 'error'); }
+            catch (err) { showToast('Excel Online\'a kaydedilemedi (' + (err.message || 'Sunucu Hatası') + ').', 'error'); }
             finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
         }
       };
@@ -2722,34 +3429,32 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         const demandToUpdate = originalDemands.find(d => d.id === demandId);
         if (!demandToUpdate) return;
         const updatedDemand = updateFn(demandToUpdate);
-        setDemands(prev => prev.map(d => d.id === demandId ? updatedDemand : d));
+        const nextDemands = demands.map(d => d.id === demandId ? updatedDemand : d);
+        setDemands(nextDemands);
         setSelectedDemandForProgress(updatedDemand);
+        try { localStorage.setItem('task_line_demands_cache', JSON.stringify(nextDemands)); } catch (e) {}
         setProcessingDemands(prev => new Set(prev).add(demandId));
         try { 
           await api.saveDemand(updatedDemand); 
           showToast(successMessage, 'success'); 
         }
         catch (err) { 
-          setDemands(originalDemands); 
-          setSelectedDemandForProgress(originalDemands.find(d => d.id === demandId) || null); 
-          showToast(`ARKA PLANA KAYDEDİLEMEDİ! ${errorMessage}`, 'error'); 
+          showToast('Excel Online\'a kaydedilemedi (' + (err.message || 'Sunucu Hatası') + ').', 'error'); 
         }
         finally { setProcessingDemands(prev => { const next = new Set(prev); next.delete(demandId); return next; }); }
       };
 
       const handleUpdateDemandFromModal = async (updatedDemand) => {
-        const originalDemands = [...demands];
-        const originalSelected = selectedDemandForProgress;
-        setDemands(prev => prev.map(d => d.id === updatedDemand.id ? updatedDemand : d));
+        const nextDemands = demands.map(d => d.id === updatedDemand.id ? updatedDemand : d);
+        setDemands(nextDemands);
         setSelectedDemandForProgress(updatedDemand);
+        try { localStorage.setItem('task_line_demands_cache', JSON.stringify(nextDemands)); } catch (e) {}
         setProcessingDemands(prev => new Set(prev).add(updatedDemand.id));
         try {
           await api.saveDemand(updatedDemand);
           showToast('Talep güncellendi.', 'success');
         } catch (err) {
-          setDemands(originalDemands);
-          setSelectedDemandForProgress(originalSelected);
-          showToast('ARKA PLANA KAYDEDİLEMEDİ! Güncellenen talep Excel Online\'a kaydedilemedi.', 'error');
+          showToast('Excel Online\'a kaydedilemedi (' + (err.message || 'Sunucu Hatası') + ').', 'error');
         } finally {
           setProcessingDemands(prev => { const next = new Set(prev); next.delete(updatedDemand.id); return next; });
         }
@@ -2973,13 +3678,24 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                 if (p.isSupportNote) {
                     desc = `(DESTEK: ${p.supportPerson ? p.supportPerson.toLocaleUpperCase('tr-TR') : 'BELIRSIZ'}) ${desc}`;
                 }
-                const fullText = `${date}: ${desc}`;
+                let mainNoteText = `${date}: ${desc}`;
+                if (p.subNotes && p.subNotes.length > 0) {
+                    const subNotesStr = p.subNotes.map(sub => {
+                        let subClean = (sub.description || '').replace(/<[^>]*>/g, '').trim().toLocaleUpperCase('tr-TR');
+                        const colorStyle = sub.textColor ? `color: ${sub.textColor};` : '';
+                        const weightStyle = sub.isBold ? 'font-weight: bold;' : '';
+                        const styleAttr = (colorStyle || weightStyle) ? ` style="${colorStyle}${weightStyle}"` : '';
+                        return `<br style="mso-data-placement:same-cell;" />&nbsp;&nbsp;&nbsp;&nbsp;<span${styleAttr}>${subClean}</span>`;
+                    }).join('');
+                    mainNoteText += subNotesStr;
+                }
+                const fullText = mainNoteText;
                 if (currentTotalLength > 0 && currentTotalLength + fullText.length > 200) {
                     currentTotalLength = fullText.length;
                     return `<br/><br/>${fullText}`;
                 }
                 currentTotalLength += fullText.length;
-                return `${date}: ${desc}`;
+                return fullText;
             })
             .join('<br style="mso-data-placement:same-cell;" />');
           const kalanItemsRaw = checklistHistoryItems;
@@ -3097,13 +3813,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                          </div>
                          {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200 uppercase font-black tracking-widest">Hata: {error}</div>}
                          {!error && (
-                            <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} currentTime={currentTime} />
+                            <KanbanBoard demands={demandsForBoard} onEdit={handleOpenEditModal} activeStatus={activeStatus} onShowProgress={handleShowProgress} onRequestDelete={requestDemandDeletion} processingDemands={processingDemands} currentTime={currentTime} isRetrying={isRetrying} isFetchFailed={isFetchFailed} retryCount={retryCount} onRetryNow={handleManualRetry} />
                          )}
                     </div>
                 </main>
                 <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} storedAssignedNames={storedAssignedNames} />
                 <DemandProgressModal isOpen={isProgressModalOpen} onClose={handleCloseProgressModal} demand={selectedDemandForProgress} currentTime={currentTime} onAddProgressItems={handleAddProgressItems} onEditDemand={handleUpdateDemandFromModal} onCompleteDemand={handleCompleteDemand} onEditProgressItem={handleEditProgressItem} onRequestDeleteProgressItem={requestProgressItemDeletion} onOpenEditModal={handleRequestEditFromProgress} />
-                <ConfirmationModal isOpen={!!deletionTarget} onClose={handleCancelDeletion} onConfirm={handleConfirmDeletion} title="Silme Onayı" message="Bu öğeyi silmek istediğinizden emin misiniz? (Silinen öğeler sistem kaydı olarak saklanacaktır)." />
+                <ConfirmationModal isOpen={!!deletionTarget} onClose={handleCancelDeletion} onConfirm={handleConfirmDeletion} title="Silme Onayı" message={deletionTarget?.type === 'demand' ? "Bu talebi silmek istediğinizden emin misiniz?" : "Bu akış notunu silmek istediğinizden emin misiniz?"} />
                 {isReportModalOpen && (
                     <div className="fixed inset-0 bg-black/60 z-[60] flex justify-center items-center p-4 backdrop-blur-sm" onClick={() => setIsReportModalOpen(false)}>
                         <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-900" onClick={e => e.stopPropagation()}>
@@ -3116,6 +3832,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                         </div>
                     </div>
                 )}
+
                 {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
             </div>
         </div>
