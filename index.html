@@ -3245,26 +3245,48 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const handleTypeChange = (e) => setInternalFilters(prev => ({ ...prev, type: e.target.value }));
       const handleUnitChange = (e) => setInternalFilters(prev => ({ ...prev, requestingUnit: e.target.value }));
       const handleAssignedChange = (e) => setInternalFilters(prev => ({ ...prev, assignedTo: e.target.value }));
+      const handleSortBySeqToggle = () => {
+        const updated = { ...internalFilters, sortBySeq: !internalFilters.sortBySeq };
+        setInternalFilters(updated);
+        onSearch(updated);
+      };
 
       return (
         <div className="pt-2">
-          <div className="bg-white p-4 rounded-xl shadow-sm flex flex-col md:flex-row items-center gap-3 border border-gray-100">
-            <div className="relative flex-grow w-full">
+          <div className="bg-white p-4 rounded-xl shadow-sm flex flex-col gap-3 border border-gray-100">
+            {/* Arama Alanı - Tam Genişlikte Üst Satır */}
+            <div className="relative w-full">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none uppercase font-black"><Icons.Search className="h-5 w-5 text-gray-400" /></div>
                 <input type="search" value={internalFilters.term} onChange={handleTermChange} className="block w-full rounded-lg border border-gray-300 bg-gray-50 text-gray-900 pl-10 p-2.5 focus:border-blue-500 focus:ring-blue-500 sm:text-sm uppercase font-black tracking-widest placeholder-gray-400" placeholder="Ara (EBYS No, Başlık, Açıklama...)" />
             </div>
-            <select value={internalFilters.assignedTo} onChange={handleAssignedChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
-                <option value="all">Tüm İşi Alanlar</option>
-                {assignedNames.map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            <select value={internalFilters.type} onChange={handleTypeChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
-                <option value="all">Tüm Talep Türleri</option>
-                {Object.values(DemandType).map(type => <option key={type} value={type}>{type}</option>)}
-            </select>
-            <select value={internalFilters.requestingUnit} onChange={handleUnitChange} className="block w-full md:w-auto p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
-                <option value="all">Tüm Birimler</option>
-                {Object.values(RequestingUnit).map(unit => <option key={unit} value={unit}>{unit}</option>)}
-            </select>
+            {/* Filtre ve Sıralama Seçenekleri - Alt Satır */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 w-full">
+              <select value={internalFilters.assignedTo} onChange={handleAssignedChange} className="w-full p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
+                  <option value="all">Tüm İşi Alanlar</option>
+                  {assignedNames.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <select value={internalFilters.type} onChange={handleTypeChange} className="w-full p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
+                  <option value="all">Tüm Talep Türleri</option>
+                  {Object.values(DemandType).map(type => <option key={type} value={type}>{type}</option>)}
+              </select>
+              <select value={internalFilters.requestingUnit} onChange={handleUnitChange} className="w-full p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
+                  <option value="all">Tüm Birimler</option>
+                  {Object.values(RequestingUnit).map(unit => <option key={unit} value={unit}>{unit}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={handleSortBySeqToggle}
+                className={`w-full p-2.5 rounded-lg border text-xs font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 ${internalFilters.sortBySeq ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+              >
+                <input 
+                  type="checkbox" 
+                  checked={!!internalFilters.sortBySeq} 
+                  readOnly 
+                  className="rounded text-blue-600 pointer-events-none" 
+                />
+                <span>Sıra No Göre Sırala</span>
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -3287,9 +3309,9 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [demandToEdit, setDemandToEdit] = useState(null);
       const [activeStatus, setActiveStatus] = useState(DemandStatus.ISLEMDE);
       const [filtersByStatus, setFiltersByStatus] = useState({
-        [DemandStatus.YENI]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all' },
-        [DemandStatus.ISLEMDE]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all' },
-        [DemandStatus.TAMAMLANDI]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all' },
+        [DemandStatus.YENI]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all', sortBySeq: false },
+        [DemandStatus.ISLEMDE]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all', sortBySeq: false },
+        [DemandStatus.TAMAMLANDI]: { type: 'all', term: '', requestingUnit: 'all', assignedTo: 'all', sortBySeq: false },
       });
       const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
       const [selectedDemandForProgress, setSelectedDemandForProgress] = useState(null);
@@ -3704,10 +3726,18 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       const demandsForBoard = rankedDemands.sort((a, b) => {
           if (activeStatus === DemandStatus.TAMAMLANDI) {
-              // Tamamlananlarda zaten tarihine göre sıralandığı için tekrar sıralamaya gerek yok
               return 0;
           }
           
+          const currentFilters = filtersByStatus[activeStatus] || {};
+
+          if (currentFilters.sortBySeq) {
+              const dateA = a.ebysDate === 'N/A' ? 0 : new Date(a.ebysDate).getTime();
+              const dateB = b.ebysDate === 'N/A' ? 0 : new Date(b.ebysDate).getTime();
+              if (dateB !== dateA) return dateB - dateA;
+              return b.id - a.id;
+          }
+
           // 1. Hatırlatmalar ve Yüksek Öncelikliler en üstte
           const aPriority = a.priority === DemandPriority.YUKSEK || hasActiveReminder(a);
           const bPriority = b.priority === DemandPriority.YUKSEK || hasActiveReminder(b);
