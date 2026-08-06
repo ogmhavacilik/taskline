@@ -684,6 +684,98 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       });
     };
 
+    // --- Metin Biçimlendirme Araç Çubuğu (Text Formatting Toolbar) ---
+    const TextFormattingToolbar = ({ formatting, onChange }) => {
+      const presetColors = [
+        { label: 'Siyah', value: '#111827' },
+        { label: 'Koyu Mavi', value: '#1d4ed8' },
+        { label: 'Mavi', value: '#2563eb' },
+        { label: 'Koyu Yeşil', value: '#15803d' },
+        { label: 'Kırmızı', value: '#dc2626' },
+        { label: 'Mor', value: '#7e22ce' },
+        { label: 'Turuncu', value: '#c2410c' }
+      ];
+
+      return (
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-gray-100 rounded-lg border border-gray-200 text-xs text-gray-700 select-none">
+          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest mr-1">Tüm Metin Biçimi:</span>
+          
+          <button 
+            type="button" 
+            onClick={() => onChange({ isBold: !formatting?.isBold })}
+            className={`p-1.5 rounded transition-all font-bold border ${formatting?.isBold ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-200 border-gray-200'}`}
+            title="Tüm Metni Kalın Yap"
+          >
+            <Icons.Bold className="w-3.5 h-3.5" />
+          </button>
+
+          <button 
+            type="button" 
+            onClick={() => onChange({ isItalic: !formatting?.isItalic })}
+            className={`p-1.5 rounded transition-all italic border ${formatting?.isItalic ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-200 border-gray-200'}`}
+            title="Tüm Metni İtalik Yap"
+          >
+            <Icons.Italic className="w-3.5 h-3.5" />
+          </button>
+
+          <button 
+            type="button" 
+            onClick={() => onChange({ isUnderline: !formatting?.isUnderline })}
+            className={`p-1.5 rounded transition-all underline border ${formatting?.isUnderline ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-200 border-gray-200'}`}
+            title="Tüm Metnin Altını Çiz"
+          >
+            <Icons.Underline className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+          <select 
+            value={formatting?.fontFamily || 'sans'}
+            onChange={(e) => onChange({ fontFamily: e.target.value })}
+            className="text-[11px] bg-white border border-gray-300 rounded px-1.5 py-1 text-gray-800 font-medium focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="sans">Sans (Standart)</option>
+            <option value="serif">Serif (Klasik)</option>
+            <option value="mono">Monospace (Kod)</option>
+            <option value="cursive">Kursif (El Yazısı)</option>
+          </select>
+
+          <select 
+            value={formatting?.fontSize || 'sm'}
+            onChange={(e) => onChange({ fontSize: e.target.value })}
+            className="text-[11px] bg-white border border-gray-300 rounded px-1.5 py-1 text-gray-800 font-medium focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="xs">Küçük</option>
+            <option value="sm">Normal</option>
+            <option value="base">Büyük</option>
+          </select>
+
+          <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest mr-0.5">Yazı Rengi:</span>
+          <div className="flex items-center gap-1">
+            {presetColors.map(c => (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => onChange({ textColor: c.value })}
+                className={`w-4 h-4 rounded-full border border-gray-300 hover:scale-125 transition-transform shadow-xs ${formatting?.textColor === c.value ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+                style={{ backgroundColor: c.value }}
+                title={`Metin Rengini ${c.label} Yap`}
+              />
+            ))}
+            <input 
+              type="color" 
+              value={formatting?.textColor || '#111827'}
+              onChange={(e) => onChange({ textColor: e.target.value })}
+              className="w-5 h-5 rounded cursor-pointer border-0 p-0 bg-transparent"
+              title="Özel Rengi Seçin"
+            />
+          </div>
+        </div>
+      );
+    };
+
     // --- Zengin Metin Editörü Araç Çubuğu (Rich Text Toolbar) ---
     const RichTextToolbar = ({ editorRef, onContentChange }) => {
       const presetColors = [
@@ -1287,26 +1379,41 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       const handleCancelEdit = () => setEditingItem(null);
 
-      const handleSaveEdit = () => {
+      const handleSaveEdit = (e) => {
+          if (e) { e.preventDefault(); e.stopPropagation(); }
           if (!editingItem || !demand) return;
           const originalItem = demand.progressHistory[editingItem.index];
           if (!originalItem) return;
-          if (!window.confirm('Akış notundaki değişiklikleri kaydetmek istediğinizden emin misiniz?')) return;
-          const newDate = editingItem.date ? new Date(editingItem.date) : new Date(originalItem.date);
+          
+          let isoDate = originalItem.date;
+          if (editingItem.date) {
+            const parsedDate = new Date(editingItem.date);
+            if (!isNaN(parsedDate.getTime())) {
+              isoDate = parsedDate.toISOString();
+            }
+          }
+
+          let reminderIsoDate = undefined;
+          if (editingItem.isReminder && editingItem.reminderDate) {
+            const parsedRem = new Date(editingItem.reminderDate);
+            if (!isNaN(parsedRem.getTime())) {
+              reminderIsoDate = parsedRem.toISOString();
+            }
+          }
           
           const updatedItem = { 
               ...originalItem, 
-              description: editingItem.description.toLocaleUpperCase('tr-TR'), 
-              date: newDate.toISOString(),
-              isKalanIsler: editingItem.isKalanIsler,
-              reminderDate: editingItem.isReminder && editingItem.reminderDate ? new Date(editingItem.reminderDate).toISOString() : undefined,
+              description: (editingItem.description || '').toLocaleUpperCase('tr-TR'), 
+              date: isoDate,
+              isKalanIsler: !!editingItem.isKalanIsler,
+              reminderDate: reminderIsoDate,
               reminderRead: editingItem.isReminder ? (editingItem.reminderDate === originalItem.reminderDate ? originalItem.reminderRead : false) : false,
-              isBold: editingItem.isBold,
-              isItalic: editingItem.isItalic,
-              isUnderline: editingItem.isUnderline,
-              fontFamily: editingItem.fontFamily,
-              fontSize: editingItem.fontSize,
-              textColor: editingItem.textColor
+              isBold: !!editingItem.isBold,
+              isItalic: !!editingItem.isItalic,
+              isUnderline: !!editingItem.isUnderline,
+              fontFamily: editingItem.fontFamily || 'sans',
+              fontSize: editingItem.fontSize || 'sm',
+              textColor: editingItem.textColor || '#111827'
           };
           onEditProgressItem(demand.id, editingItem.index, updatedItem, originalItem);
           setEditingItem(null);
@@ -1776,7 +1883,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                                     </div>
                                     <div className="flex justify-end gap-2">
                                       <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-800 rounded text-xs uppercase font-bold tracking-tighter">İptal</button>
-                                      <button onClick={handleSaveEdit} className="px-3 py-1 bg-blue-600 text-white rounded text-xs uppercase font-bold tracking-tighter">Kaydet</button>
+                                      <button type="button" onClick={(e) => handleSaveEdit(e)} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs uppercase font-bold tracking-tighter cursor-pointer">Kaydet</button>
                                     </div>
                                   </div>
                                 ) : (
