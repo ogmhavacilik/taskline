@@ -908,13 +908,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
     // --- Zengin Metin Editörü (Rich Text Editor) ---
     const RichTextEditor = ({ value, onChange, placeholder = "Metin giriniz...", minHeight = "80px", className = "" }) => {
       const editorRef = useRef(null);
+      const lastValueRef = useRef(value);
 
       useEffect(() => {
         if (editorRef.current) {
-          const currentHtml = editorRef.current.innerHTML;
-          const targetHtml = value || '';
-          if (currentHtml !== targetHtml) {
-            editorRef.current.innerHTML = targetHtml;
+          if (value !== lastValueRef.current) {
+            lastValueRef.current = value || '';
+            editorRef.current.innerHTML = value || '';
           }
         }
       }, [value]);
@@ -923,19 +923,89 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         if (editorRef.current) {
           let val = editorRef.current.innerHTML;
           if (val) {
-            val = val.replace(/&nbsp;/gi, ' ').replace(/\u00A0/g, ' ').replace(/&NBSP;/gi, ' ');
+            val = val.replace(/&amp;nbsp;/gi, ' ')
+                     .replace(/&nbsp;/gi, ' ')
+                     .replace(/\u00A0/g, ' ')
+                     .replace(/&NBSP;/gi, ' ')
+                     .replace(/\bNSP\b/gi, ' ')
+                     .replace(/\bNBSP\b/gi, ' ');
           }
+          lastValueRef.current = val;
           onChange(val);
         }
       };
 
+      const handlePaste = (e) => {
+        e.preventDefault();
+        const clipboardData = e.clipboardData || window.clipboardData;
+        if (!clipboardData) return;
+
+        // PDF veya Word kopyalamalarında görsel/resim/canvas ve stil bozukluklarını engelleyip temiz metni alıyoruz
+        let plainText = clipboardData.getData('text/plain');
+
+        if (!plainText) {
+          const htmlData = clipboardData.getData('text/html');
+          if (htmlData) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlData;
+            tempDiv.querySelectorAll('img, canvas, svg, style, script, iframe, object, embed').forEach(el => el.remove());
+            plainText = tempDiv.innerText || tempDiv.textContent || '';
+          }
+        }
+
+        if (plainText) {
+          let cleanText = String(plainText)
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/&amp;nbsp;/gi, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/\u00A0/g, ' ')
+            .replace(/&NBSP;/gi, ' ')
+            .replace(/\bNSP\b/gi, ' ')
+            .replace(/\bNBSP\b/gi, ' ');
+
+          // Manuel yazım formatı ile aynı şekilde Türkçe Büyük Harfe dönüştür
+          cleanText = cleanText.toLocaleUpperCase('tr-TR');
+
+          if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+            document.execCommand('insertText', false, cleanText);
+          } else {
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) {
+              const range = sel.getRangeAt(0);
+              range.deleteContents();
+              const textNode = document.createTextNode(cleanText);
+              range.insertNode(textNode);
+
+              const newRange = document.createRange();
+              newRange.setStartAfter(textNode);
+              newRange.setEndAfter(textNode);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+            }
+          }
+
+          if (editorRef.current) {
+            const currentHtml = editorRef.current.innerHTML;
+            lastValueRef.current = currentHtml;
+            onChange(currentHtml);
+          }
+        }
+      };
+
+      const handleToolbarChange = (newHtml) => {
+        lastValueRef.current = newHtml;
+        onChange(newHtml);
+      };
+
       return (
         <div className="border border-gray-300 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 w-full transition-all my-1 flex flex-col relative z-0">
-          <RichTextToolbar editorRef={editorRef} onContentChange={onChange} />
+          <RichTextToolbar editorRef={editorRef} onContentChange={handleToolbarChange} />
           <div
             ref={editorRef}
             contentEditable
             onInput={handleInput}
+            onPaste={handlePaste}
             className={`p-3 outline-none overflow-y-auto uppercase text-sm leading-relaxed text-gray-900 flex-1 min-w-0 bg-white relative z-0 ${className}`}
             style={{ minHeight }}
             data-placeholder={placeholder}
@@ -991,13 +1061,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       };
 
       const handleSubNoteTextChange = (e) => {
-        const start = e.target.selectionStart;
-        const end = e.target.selectionEnd;
         const val = e.target.value.toLocaleUpperCase('tr-TR');
         setSubNoteText(val);
-        requestAnimationFrame(() => {
-          if (e.target) e.target.setSelectionRange(start, end);
-        });
       };
 
       const handleStartEditSubNote = (parentOriginalIndex, subIndex, subNote, e) => {
@@ -1020,13 +1085,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       };
 
       const handleEditingSubNoteTextChange = (e) => {
-        const start = e.target.selectionStart;
-        const end = e.target.selectionEnd;
         const val = e.target.value.toLocaleUpperCase('tr-TR');
         setEditingSubNote(prev => prev ? ({ ...prev, text: val }) : null);
-        requestAnimationFrame(() => {
-          if (e.target) e.target.setSelectionRange(start, end);
-        });
       };
 
       const handleSaveEditedSubNote = (e) => {
@@ -1718,13 +1778,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       };
 
       const handleCompletionNoteChange = (e) => {
-        const start = e.target.selectionStart;
-        const end = e.target.selectionEnd;
         const val = e.target.value.toLocaleUpperCase('tr-TR');
         setCompletionNote(val);
-        requestAnimationFrame(() => {
-          if (e.target) e.target.setSelectionRange(start, end);
-        });
       };
 
       const handleStartCompletion = () => { setIsConfirmingCompletion(true); setCompletionDate(new Date().toISOString().split('T')[0]); };
@@ -1758,13 +1813,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const sortedChecklistItemsForTable = [...checklistItems];
 
       const handleNewProgressTextChange = (e) => {
-        const start = e.target.selectionStart;
-        const end = e.target.selectionEnd;
         const val = e.target.value.toLocaleUpperCase('tr-TR');
         setNewProgressText(val);
-        requestAnimationFrame(() => {
-          if (e.target) e.target.setSelectionRange(start, end);
-        });
       };
 
       return (
@@ -2623,34 +2673,16 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }, ...manualChecklistItems]);
       };
 
-      const handleUpdateProcessedRow = (index, field, value, e) => {
-        let start, end;
+      const handleUpdateProcessedRow = (index, field, value) => {
         const isTextField = field === 'name' || field === 'partNo' || field === 'serialNo';
-        if (e && e.target && isTextField) {
-            start = e.target.selectionStart;
-            end = e.target.selectionEnd;
-        }
-
         const updated = [...processedChecklist];
         const transformedValue = isTextField && typeof value === 'string' ? value.toLocaleUpperCase('tr-TR') : value;
         updated[index][field] = transformedValue;
         setProcessedChecklist(updated);
-
-        if (e && e.target && isTextField) {
-            requestAnimationFrame(() => {
-                if (e.target) e.target.setSelectionRange(start, end);
-            });
-        }
       };
 
-      const handleUpdateManualRow = (index, field, value, e) => {
-        let start, end;
+      const handleUpdateManualRow = (index, field, value) => {
         const isTextField = field === 'name' || field === 'partNo' || field === 'serialNo';
-        if (e && e.target && isTextField) {
-            start = e.target.selectionStart;
-            end = e.target.selectionEnd;
-        }
-
         const updated = [...manualChecklistItems];
         const transformedValue = isTextField && typeof value === 'string' ? value.toLocaleUpperCase('tr-TR') : value;
         updated[index][field] = transformedValue;
@@ -2669,12 +2701,6 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             }
         }
         setManualChecklistItems(updated);
-
-        if (e && e.target && isTextField) {
-            requestAnimationFrame(() => {
-                if (e.target) e.target.setSelectionRange(start, end);
-            });
-        }
       };
 
       const onChecklistExcelUpload = (e) => {
