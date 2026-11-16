@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbxuivDglCOCOl32raOdzjV_gjDk6k7i70pepzYp8ak9tcc1D8t5L9gJNI2YxYXZi7wa/exec" />
+  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbwhbIHtxu1jVpjQg9nn4v_wZO9q-_ibIqyLwgF8B3l5ko4gZYwL5WlEwJmiT4_swbU/exec" />
   <meta name="excel-script-url" content="https://script.google.com/macros/s/AKfycbys4kKFJI87wbn155z6jphH7D5qgC45FWUvzzxi9n4-YfYDdRxY72fMWTaTGMxvkXqN-g/exec" />
+  <meta name="draft-script-url" content="https://script.google.com/macros/s/AKfycbxk1H3J_nJ7TaG3UNXq6IqWZy1NKwqSzKjKHPId9h9o5656c9ziUi-T90K27DPD7zTB/exec" />
   <title>Task Line</title>
   
   <!-- Tailwind CSS -->
@@ -154,6 +155,218 @@
     const getExcelScriptUrl = () => {
       const excelMetaTag = document.querySelector('meta[name="excel-script-url"]');
       return excelMetaTag ? excelMetaTag.getAttribute('content') : getScriptUrl();
+    };
+
+    const getDraftScriptUrl = () => {
+      const draftMetaTag = document.querySelector('meta[name="draft-script-url"]');
+      return draftMetaTag ? draftMetaTag.getAttribute('content') : 'https://script.google.com/macros/s/AKfycbxk1H3J_nJ7TaG3UNXq6IqWZy1NKwqSzKjKHPId9h9o5656c9ziUi-T90K27DPD7zTB/exec';
+    };
+
+    const normalizeTrText = (val) => String(val || '').trim().toLocaleUpperCase('tr-TR');
+
+    const normalizeDraftRow = (raw, idx) => {
+      if (!raw || typeof raw !== 'object') return null;
+      const getField = (...keys) => {
+        for (const k of keys) {
+          if (raw[k] !== undefined && raw[k] !== null && String(raw[k]).trim() !== '') {
+            return String(raw[k]).trim();
+          }
+        }
+        return '';
+      };
+      return {
+        rowIndex: raw.rowIndex ? Number(raw.rowIndex) : (idx + 2),
+        talepNo: getField('talepNo', 'TALEP NO (YYYY-SIRA NO)', 'TALEP NO', 'talep_no'),
+        talepTuru: getField('talepTuru', 'TALEP TÜRÜ', 'talep_turu'),
+        formBasligi: getField('formBasligi', 'FORM BAŞLIĞI', 'form_basligi'),
+        birim: getField('birim', 'BİRİM / HAVA ARACI', 'BİRİM', 'birim_hava_araci'),
+        kuyrukNo: getField('kuyrukNo', 'KUYRUK / TESCİL NO', 'kuyruk_no'),
+        malzemeOzet: getField('malzemeOzet', 'MALZEME / İŞLEM ÖZETİ', 'malzeme_ozet'),
+        talepEden: getField('talepEden', 'TALEP EDEN PERSONEL', 'talep_eden'),
+        tarih: getField('tarih', 'TARİH', 'date'),
+        durum: getField('durum', 'DURUM', 'status'),
+        belgeYuklemeTarihi: getField('belgeYuklemeTarihi', 'BELGE YÜKLEME TARİHİ', 'BELGE YUKLEME TARIHI', 'OLUŞTURMA TARİHİ', 'belge_yukleme_tarihi'),
+        belgeLinki: getSafeDocumentUrl(getField('belgeLinki', 'BELGE LİNKİ', 'BELGE LINKI', 'belge_linki'))
+      };
+    };
+
+    const SIGNED_DOC_DEFAULT_FOLDER_URL = 'https://bulut.ogm.gov.tr/app/tr-TR/Klasor/Paylas/OGMDrive/4324a6cd-7f8a-4c6b-86bc-92e0990d26c3';
+
+    const hasSignedDocument = (draft) => Boolean(draft && draft.belgeYuklemeTarihi && draft.belgeLinki);
+
+    function getSafeDocumentUrl(url) {
+      const trimmed = String(url || '').trim();
+      if (!trimmed) return '';
+      if (/^javascript:/i.test(trimmed)) return '';
+      const withProto = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+      if (/^https?:\/\/bulut\.ogm\.gov\.tr\/sartnameler\/?$/i.test(withProto)) {
+        return SIGNED_DOC_DEFAULT_FOLDER_URL;
+      }
+      return withProto;
+    }
+
+    const isDraftPendingStatus = (durum) => {
+      const norm = normalizeTrText(durum).replace(/İ/g, 'I').replace(/I/g, 'I');
+      return norm === 'ONAY BEKLIYOR' || normalizeTrText(durum) === 'ONAY BEKLİYOR';
+    };
+
+    let resolvedDraftScriptUrl = '';
+
+    const draftApi = {
+      getPendingDrafts: async () => {
+        const primaryUrl = getDraftScriptUrl();
+        const secondaryUrl = getScriptUrl();
+        const candidateUrls = [primaryUrl, secondaryUrl].filter((u, idx, arr) => u && arr.indexOf(u) === idx);
+        if (candidateUrls.length === 0) throw new Error("Taslak Portal URL bulunamadı");
+
+        const parseDraftResponse = (json) => {
+          if (!json) return { list: null, needsUpdate: true };
+          if (json.status === 'error') throw new Error(json.message || 'Taslak verisi alınamadı');
+          const rawList = Array.isArray(json.data) ? json.data : (Array.isArray(json.drafts) ? json.drafts : (Array.isArray(json) ? json : null));
+          if (!rawList) {
+            return { list: null, needsUpdate: true, rawMessage: json.message || '' };
+          }
+          const normalized = rawList
+            .map((r, i) => normalizeDraftRow(r, i))
+            .filter(r => r && (r.talepNo || r.formBasligi || r.malzemeOzet) && (!r.durum || isDraftPendingStatus(r.durum)));
+          return { list: normalized, needsUpdate: false };
+        };
+
+        const tryUrl = async (baseUrl) => {
+          // 1. Try GET ?action=getPendingDrafts
+          try {
+            const sep = baseUrl.includes('?') ? '&' : '?';
+            const getRes = await fetch(`${baseUrl}${sep}action=getPendingDrafts&_t=${Date.now()}`, {
+              method: 'GET',
+              mode: 'cors',
+              credentials: 'omit',
+              redirect: 'follow'
+            });
+            if (getRes.ok) {
+              const contentType = getRes.headers.get('content-type') || '';
+              const text = await getRes.text();
+              if (contentType.includes('application/json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+                const getJson = JSON.parse(text);
+                const parsedGet = parseDraftResponse(getJson);
+                if (!parsedGet.needsUpdate) {
+                  return { drafts: parsedGet.list, scriptNeedsUpdate: false };
+                }
+              }
+            }
+          } catch (e) {
+            // Fall through to POST
+          }
+
+          // 2. Fallback POST { action: 'getPendingDrafts' }
+          const postRes = await fetch(baseUrl, {
+            method: 'POST',
+            mode: 'cors',
+            credentials: 'omit',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'getPendingDrafts', payload: {} }),
+            redirect: 'follow'
+          });
+          if (!postRes.ok) throw new Error(`Taslak Portal hatası: ${postRes.status}`);
+          const postJson = await postRes.json();
+          const parsedPost = parseDraftResponse(postJson);
+          if (!parsedPost.needsUpdate) {
+            return { drafts: parsedPost.list, scriptNeedsUpdate: false };
+          }
+          return { drafts: [], scriptNeedsUpdate: true };
+        };
+
+        let lastError = null;
+        for (const candidate of candidateUrls) {
+          try {
+            const res = await tryUrl(candidate);
+            if (!res.scriptNeedsUpdate) {
+              resolvedDraftScriptUrl = candidate;
+              return res;
+            }
+          } catch (err) {
+            lastError = err;
+          }
+        }
+
+        if (lastError && candidateUrls.length === 1) throw lastError;
+        return { drafts: [], scriptNeedsUpdate: true };
+      },
+
+      approveDraft: async ({ rowIndex, talepNo, ebysNumber }) => {
+        const baseUrl = resolvedDraftScriptUrl || getDraftScriptUrl() || getScriptUrl();
+        if (!baseUrl) throw new Error("Taslak Portal URL bulunamadı");
+        const res = await fetch(baseUrl, {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'approveDraft',
+            payload: { rowIndex, talepNo, ebysNumber, status: 'ONAYLANDI' }
+          }),
+          redirect: 'follow'
+        });
+        if (!res.ok) throw new Error(`Taslak Portal hatası: ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message || 'Taslak onaylanamadı');
+        return json;
+      },
+
+      completeDraft: async ({ ebysNumber, talepNo, rowIndex }) => {
+        const baseUrl = resolvedDraftScriptUrl || getDraftScriptUrl() || getScriptUrl();
+        if (!baseUrl) throw new Error("Taslak Portal URL bulunamadı");
+        const res = await fetch(baseUrl, {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'completeDraft',
+            payload: { ebysNumber, talepNo, rowIndex, status: 'İŞLEM TAMAMLANDI' }
+          }),
+          redirect: 'follow'
+        });
+        if (!res.ok) throw new Error(`Taslak Portal hatası: ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message || 'Taslak durumu güncellenemedi');
+        return json;
+      }
+    };
+
+    const extractDraftMetaFromDemand = (demand) => {
+      if (!demand) return null;
+      if (demand.draftSource && (demand.draftSource.talepNo || demand.draftSource.rowIndex)) {
+        return demand.draftSource;
+      }
+      const history = Array.isArray(demand.progressHistory) ? demand.progressHistory : [];
+      for (const item of history) {
+        if (item && typeof item.description === 'string' && item.description.includes('TASLAK_KAYNAK')) {
+          const talepMatch = item.description.match(/TALEP_NO:\s*([^|\n]+)/i);
+          const rowMatch = item.description.match(/SATIR:\s*(\d+)/i);
+          return {
+            talepNo: talepMatch ? talepMatch[1].trim() : '',
+            rowIndex: rowMatch ? parseInt(rowMatch[1], 10) : 0
+          };
+        }
+      }
+      return null;
+    };
+
+    const parseDraftDateToISOInput = (dateStr) => {
+      if (!dateStr) return new Date().toISOString().split('T')[0];
+      const cleaned = String(dateStr).trim();
+      const ddmmyyyy = cleaned.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+      if (ddmmyyyy) {
+        const d = ddmmyyyy[1].padStart(2, '0');
+        const m = ddmmyyyy[2].padStart(2, '0');
+        const y = ddmmyyyy[3];
+        return `${y}-${m}-${d}`;
+      }
+      const yyyymmdd = cleaned.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+      if (yyyymmdd) {
+        return `${yyyymmdd[1]}-${yyyymmdd[2].padStart(2, '0')}-${yyyymmdd[3].padStart(2, '0')}`;
+      }
+      return new Date().toISOString().split('T')[0];
     };
 
     const callApi = async (action, payload, isExcel = false) => {
@@ -454,6 +667,21 @@
       Refresh: ({ className = "w-5 h-5" }) => (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+        </svg>
+      ),
+      ChevronDown: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+        </svg>
+      ),
+      Inbox: ({ className = "w-5 h-5" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H6.911a2.25 2.25 0 0 0-2.15 1.588L2.35 13.177a2.25 2.25 0 0 0-.1.661Z" />
+        </svg>
+      ),
+      ArrowRight: ({ className = "w-4 h-4" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
         </svg>
       )
     };
@@ -1019,7 +1247,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
     // ==========================================
 
     // --- DemandProgressModal (Detaylı Akış Penceresi) ---
-    const DemandProgressModal = ({ isOpen, onClose, demand, currentTime, onAddProgressItems, onEditDemand, onCompleteDemand, onEditProgressItem, onRequestDeleteProgressItem, onOpenEditModal }) => {
+    const DemandProgressModal = ({ isOpen, onClose, demand, currentTime, onAddProgressItems, onEditDemand, onCompleteDemand, onEditProgressItem, onRequestDeleteProgressItem, onOpenEditModal, onNotify }) => {
       const [newProgressText, setNewProgressText] = useState('');
       const [customDate, setCustomDate] = useState(toLocalISOString(new Date()));
       const [isReminder, setIsReminder] = useState(false);
@@ -1046,6 +1274,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [subNoteFormatting, setSubNoteFormatting] = useState({ isBold: false, isItalic: false, isUnderline: false, fontFamily: 'sans', fontSize: 'sm', textColor: '#1d4ed8' });
       const [subNoteDate, setSubNoteDate] = useState(toLocalISOString(new Date()));
       const [editingSubNote, setEditingSubNote] = useState(null);
+      const [isMobileComposerOpen, setIsMobileComposerOpen] = useState(false);
 
       const handleToggleSubNoteInput = (originalIndex, e) => {
         if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -1379,6 +1608,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             setIsReminderDatePickerOpen(false);
             setIsEditReminderDatePickerOpen(false);
             setIsChecklistOpen(false);
+            setIsMobileComposerOpen(false);
             setChecklistManualDate(new Date().toISOString().split('T')[0]);
             setMaterialTableMode('selection');
             
@@ -1819,49 +2049,49 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       return (
         <React.Fragment>
-        <div className="fixed inset-0 bg-black/60 z-[60] backdrop-blur-sm pointer-events-auto flex items-center justify-center p-2 sm:p-4 overflow-hidden" onWheel={(e) => e.stopPropagation()}>
-          <div className="w-full max-w-7xl flex justify-center items-center h-full max-h-[92vh] sm:max-h-[88vh]">
-            <div className="bg-white rounded-xl shadow-2xl w-full flex flex-col h-full overflow-hidden transform transition-all text-gray-900 my-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-[60] backdrop-blur-sm pointer-events-auto flex items-center justify-center p-0 sm:p-4 overflow-hidden" onWheel={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-7xl flex justify-center items-center h-[100dvh] sm:h-full sm:max-h-[90vh]">
+            <div className="bg-white rounded-none sm:rounded-xl shadow-2xl w-full flex flex-col h-full overflow-hidden transform transition-all text-gray-900 my-auto" onClick={(e) => e.stopPropagation()}>
               
-              <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
-                <div className="flex-1 min-w-0 mr-4">
-                  <div className="flex items-center gap-2 mb-1">
+              <div className="flex justify-between items-center p-3 sm:p-5 border-b border-gray-100 bg-gray-50/50 flex-shrink-0 gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${demand.status === DemandStatus.TAMAMLANDI ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                         {demand.status}
                       </span>
-                      <span className="text-xs text-gray-400 font-mono uppercase tracking-widest">#{demand.ebysNumber}</span>
+                      <span className="text-[11px] sm:text-xs text-gray-400 font-mono uppercase tracking-wider truncate">#{demand.ebysNumber}</span>
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900 truncate uppercase tracking-tight" title={demand.title}>{demand.title}</h2>
-                  <div className="text-xs text-gray-500 mt-0.5 truncate uppercase tracking-widest">{demand.requestingUnit}</div>
+                  <h2 className="text-sm sm:text-xl font-bold text-gray-900 line-clamp-2 sm:truncate uppercase tracking-tight leading-snug" title={demand.title}>{demand.title}</h2>
+                  <div className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate uppercase tracking-wider">{demand.requestingUnit}</div>
                 </div>
                 
-                <div className="flex items-center gap-2 shrink-0">
-                   <button onClick={handleExportSingleDemand} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-semibold transition-colors border border-green-200 uppercase tracking-widest">
-                     <Icons.Download className="w-4 h-4" /> Excel
+                <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                   <button onClick={handleExportSingleDemand} className="flex items-center gap-1.5 px-2.5 py-2 sm:px-3 sm:py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-semibold transition-colors border border-green-200 uppercase tracking-wider min-h-[40px] sm:min-h-0" title="Excel İndir">
+                     <Icons.Download className="w-4 h-4" /> <span className="hidden sm:inline">Excel</span>
                    </button>
-                   <button onClick={(e) => { e.stopPropagation(); onOpenEditModal(demand); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Düzenle">
+                   <button onClick={(e) => { e.stopPropagation(); onOpenEditModal(demand); }} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center" title="Düzenle">
                     <Icons.Edit className="w-5 h-5" />
                   </button>
-                  <button onClick={handleCloseModal} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Kapat">
+                  <button onClick={handleCloseModal} className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center" title="Kapat">
                     <Icons.X className="w-6 h-6" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-1 overflow-hidden relative">
-                <div className="flex-grow overflow-y-auto p-6 bg-white scrollbar-thin scrollbar-thumb-gray-300">
+              <div className="flex flex-1 min-h-0 overflow-hidden relative">
+                <div className="flex-grow overflow-y-auto overscroll-contain touch-pan-y p-3 sm:p-6 bg-white scrollbar-thin scrollbar-thumb-gray-300" style={{ WebkitOverflowScrolling: 'touch' }}>
                   {demand.attachments && demand.attachments.length > 0 && (
-                      <div className="mb-6 flex justify-end">
-                          <button onClick={() => setIsAttachmentPreviewOpen(true)} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-full uppercase font-black tracking-widest">
+                      <div className="mb-4 sm:mb-6 flex justify-end">
+                          <button onClick={() => setIsAttachmentPreviewOpen(true)} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-full uppercase font-black tracking-widest">
                             <Icons.ExternalLink className="w-3 h-3" /> {demand.attachments.length} Ek Dosya
                           </button>
                       </div>
                     )}
 
-                  <div className="relative">
-                    <div className="absolute top-0 bottom-0 left-[19px] w-0.5 bg-gray-200"></div>
+                  <div className="relative pb-6">
+                    <div className="absolute top-0 bottom-0 left-[11px] sm:left-[19px] w-0.5 bg-gray-200"></div>
 
-                    <div className="space-y-6">
+                    <div className="space-y-4 sm:space-y-6">
                         {timeline.map((item, index) => {
                           const isSupport = item.isSupportNote;
                           const isCompletion = item.isCompletionNote;
@@ -1872,13 +2102,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                           let cardClass = "bg-white border-gray-200";
                           
                           if (isCompletion) {
-                              icon = <Icons.CheckCircle className="w-6 h-6 text-green-600 bg-white ring-4 ring-white rounded-full" />;
+                              icon = <Icons.CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 bg-white ring-4 ring-white rounded-full" />;
                               cardClass = "bg-green-50 border-green-200";
                           } else if (isSupport) {
                               icon = <div className="w-3 h-3 bg-orange-500 rounded-full ring-4 ring-white"></div>;
                               cardClass = "bg-orange-50 border-orange-200";
                           } else if (isReminderActive) {
-                              icon = <Icons.Flag className="w-5 h-5 text-red-600 bg-white rounded-full ring-4 ring-white animate-flash" />;
+                              icon = <Icons.Flag className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 bg-white rounded-full ring-4 ring-white animate-flash" />;
                               cardClass = "bg-red-50 border-red-300 shadow-md animate-pulse-red";
                           } else if (isKalan) {
                               icon = <div className="w-3 h-3 bg-purple-500 rounded-full ring-4 ring-white"></div>;
@@ -1886,18 +2116,18 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                           }
 
                           return (
-                            <div key={index} className="relative flex gap-6 group">
-                              <div className="flex-shrink-0 mt-1 z-10 w-10 flex justify-center">
+                            <div key={index} className="relative flex gap-2.5 sm:gap-6 group">
+                              <div className="flex-shrink-0 mt-1 z-10 w-6 sm:w-10 flex justify-center">
                                   {icon}
                               </div>
-                              <div className={`flex-grow p-4 rounded-xl border text-sm relative ${cardClass} transition-all`}>
+                              <div className={`flex-grow min-w-0 p-3 sm:p-4 rounded-xl border text-sm relative ${cardClass} transition-all`}>
                                  {isReminderActive && (
-                                     <div className="absolute -top-2.5 right-4 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide uppercase">
+                                     <div className="absolute -top-2.5 right-3 sm:right-4 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide uppercase">
                                          HATIRLATMA
                                      </div>
                                  )}
                                  {isKalan && (
-                                     <div className="absolute -top-2.5 right-4 bg-purple-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide uppercase">
+                                     <div className="absolute -top-2.5 right-3 sm:right-4 bg-purple-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide uppercase">
                                          KALAN İŞ / MİKTAR
                                      </div>
                                  )}
@@ -1956,16 +2186,16 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                                   </div>
                                 ) : (
                                   <>
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
+                                        <span className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">
                                             {new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute:'2-digit' })}
                                         </span>
                                         {item.isEditable && (
-                                          <div className="flex items-center gap-1.5">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
                                             <button 
                                               type="button"
                                               onClick={(e) => handleToggleSubNoteInput(item.originalIndex, e)} 
-                                              className="px-2 py-1 bg-blue-100 hover:bg-blue-200 border border-blue-300 text-blue-700 rounded transition-all flex items-center gap-1 font-bold text-xs shadow-sm cursor-pointer" 
+                                              className="px-2 py-1.5 sm:py-1 bg-blue-100 hover:bg-blue-200 border border-blue-300 text-blue-700 rounded transition-all flex items-center gap-1 font-bold text-xs shadow-sm cursor-pointer" 
                                               title="Akış Alt Notu Ekle"
                                             >
                                               <Icons.ArrowDown className="w-3.5 h-3.5" />
@@ -1992,13 +2222,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                                     </div>
                                     {isSupport && <div className="text-xs font-bold text-orange-700 mb-1 uppercase tracking-tighter">Destek Personeli: {item.supportPerson}</div>}
                                     <div className="flex items-start gap-2">
-                                      <input type="checkbox" checked={!!isKalan} readOnly className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                                      <input type="checkbox" checked={!!isKalan} readOnly className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
                                       <div 
                                         style={{ 
                                           color: item.textColor || '#1f2937', 
                                           fontFamily: item.fontFamily === 'serif' ? 'Georgia, serif' : item.fontFamily === 'mono' ? 'monospace' : item.fontFamily === 'cursive' ? 'cursive' : 'inherit' 
                                         }}
-                                        className={`whitespace-pre-wrap leading-relaxed tracking-tight ${item.fontSize === 'xs' ? 'text-xs' : item.fontSize === 'base' ? 'text-base' : 'text-sm'} ${item.isBold ? 'font-bold' : 'font-medium'} ${item.isItalic ? 'italic' : ''} ${item.isUnderline ? 'underline' : ''} ${isReminderActive ? 'animate-flash text-red-600 font-bold' : ''}`}
+                                        className={`min-w-0 break-words whitespace-pre-wrap leading-relaxed tracking-tight ${item.fontSize === 'xs' ? 'text-xs' : item.fontSize === 'base' ? 'text-base' : 'text-[13px] sm:text-sm'} ${item.isBold ? 'font-bold' : 'font-medium'} ${item.isItalic ? 'italic' : ''} ${item.isUnderline ? 'underline' : ''} ${isReminderActive ? 'animate-flash text-red-600 font-bold' : ''}`}
                                       >
                                         {renderTextWithLinks(item.description)}
                                       </div>
@@ -2156,21 +2386,21 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                 {/* Checklist Side Panel */}
                 {isChecklistOpen && (
                   <div className="absolute inset-0 bg-white z-30 flex flex-col transform transition-transform animate-in slide-in-from-right duration-300">
-                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center flex-shrink-0 shadow-sm">
-                      <h3 className="font-black text-green-800 flex items-center gap-2 text-xl uppercase tracking-widest"><Icons.ClipboardList className="w-7 h-7 text-green-700"/> Kalan İşler / Miktarlar Listesi</h3>
-                      <div className="flex items-center gap-3">
-                         <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
+                    <div className="p-3 sm:p-4 bg-gray-50 border-b flex flex-wrap gap-2 justify-between items-center flex-shrink-0 shadow-sm">
+                      <h3 className="font-black text-green-800 flex items-center gap-2 text-base sm:text-xl uppercase tracking-wider"><Icons.ClipboardList className="w-6 h-6 sm:w-7 sm:h-7 text-green-700"/> Kalan İşler / Miktarlar Listesi</h3>
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                         <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-gray-200 shadow-sm">
                             <label className="text-[10px] font-black text-gray-500 uppercase">Geliş Tarihi:</label>
                             <input type="date" value={checklistManualDate} onChange={(e) => setChecklistManualDate(e.target.value)} className="text-xs border rounded p-1 text-gray-900 font-bold"/>
                          </div>
-                         {anyChecked && <button onClick={handleBulkDeleteChecklist} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-black text-xs uppercase shadow-md tracking-widest"><Icons.Trash className="w-4 h-4"/> SEÇİLENLERİ SİL</button>}
-                         <button onClick={handleDownloadChecklistAsWord} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-black text-xs uppercase shadow-md tracking-widest"><Icons.Download className="w-4 h-4"/> WORD OLARAK İNDİR</button>
+                         {anyChecked && <button onClick={handleBulkDeleteChecklist} className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-black text-xs uppercase shadow-md tracking-wider"><Icons.Trash className="w-4 h-4"/> SEÇİLENLERİ SİL</button>}
+                         <button onClick={handleDownloadChecklistAsWord} className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-black text-xs uppercase shadow-md tracking-wider"><Icons.Download className="w-4 h-4"/> WORD OLARAK İNDİR</button>
                          <button onClick={() => setIsChecklistOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white border p-1.5 rounded-full transition-colors"><Icons.X className="w-6 h-6"/></button>
                       </div>
                     </div>
-                    <div className="flex-grow overflow-y-auto p-10 bg-gray-100">
-                      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl border border-gray-300 overflow-hidden">
-                        <table className="w-full border-collapse">
+                    <div className="flex-grow overflow-y-auto p-3 sm:p-10 bg-gray-100">
+                      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl border border-gray-300 overflow-x-auto">
+                        <table className="w-full min-w-[760px] border-collapse">
                            <thead>
                               <tr className="bg-[#1A4D2E] text-white">
                                  <th className="px-4 py-4 text-center border border-green-800 w-12"><input type="checkbox" onChange={(e) => setChecklistItems(prev => prev.map(it => ({...it, checked: e.target.checked})))} /></th>
@@ -2252,7 +2482,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
               {/* Input Area */}
               {demand.status !== DemandStatus.TAMAMLANDI && (
-                <div className="p-3 sm:p-4 bg-gray-50 border-t border-gray-200 flex-shrink-0 max-h-[35vh] overflow-y-auto">
+                <div className="p-2.5 sm:p-4 bg-gray-50 border-t border-gray-200 flex-shrink-0 max-h-[48vh] sm:max-h-[38vh] overflow-y-auto">
                    {isConfirmingCompletion ? (
                       <div className="bg-white p-4 rounded-lg shadow-sm border border-green-200 animate-in fade-in slide-in-from-bottom-2">
                         <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2 uppercase tracking-tighter font-black"><Icons.CheckCircle className="w-5 h-5"/> Tamamlama Onayı</h3>
@@ -2261,8 +2491,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                           <input type="text" value={completionNote} onChange={handleCompletionNoteChange} className="p-2 border rounded text-sm text-gray-900 uppercase tracking-tighter font-medium" placeholder="Son not (isteğe bağlı)" />
                         </div>
                         <div className="mt-3 flex justify-end gap-2">
-                          <button onClick={() => setIsConfirmingCompletion(false)} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm uppercase font-bold tracking-tighter">Vazgeç</button>
-                          <button onClick={() => { handleConfirmCompletion(); handleCloseModal(); }} disabled={!completionDate} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 uppercase font-bold tracking-tighter">Bitir</button>
+                          <button onClick={() => setIsConfirmingCompletion(false)} className="px-3 py-2 bg-gray-200 text-gray-700 rounded text-sm uppercase font-bold tracking-tighter">Vazgeç</button>
+                          <button onClick={() => { handleConfirmCompletion(); handleCloseModal(); }} disabled={!completionDate} className="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 uppercase font-bold tracking-tighter">Bitir</button>
                         </div>
                       </div>
                     ) : showOgmCloudForm ? (
@@ -2278,81 +2508,127 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                             </div>
                        </div>
                     ) : (
-                      <div className="flex flex-col gap-3">
-                         <div className="flex flex-wrap gap-3 items-center justify-between">
-                            <div className="flex flex-wrap gap-3 items-center">
-                                <div className="relative">
-                                    <button onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
-                                        <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
-                                        <span className="text-xs font-medium text-gray-700 group-hover:text-blue-700 uppercase tracking-tighter font-black">{customDateDisplay}</span>
-                                    </button>
-                                    {isDatePickerOpen && (
-                                       <div className="absolute bottom-full left-0 mb-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
-                                           <input type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
-                                           <button onClick={() => setIsDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase font-bold tracking-tighter">Uygula</button>
-                                       </div>
-                                    )}
-                                </div>
-                                <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer border transition-colors ${isReminder ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600'}`}>
-                                    <input type="checkbox" checked={isReminder} onChange={e => {
-                                        setIsReminder(e.target.checked);
-                                        if (e.target.checked && !reminderDate) {
-                                            setReminderDate(toLocalISOString(new Date()));
-                                        }
-                                    }} className="rounded text-red-600 focus:ring-red-500"/>
-                                    <span className="text-xs font-bold uppercase tracking-widest font-black">Hatırlatma</span>
-                                </label>
-                                {isReminder && (
-                                    <div className="relative">
-                                        <button onClick={() => setIsReminderDatePickerOpen(!isReminderDatePickerOpen)} className="flex items-center gap-2 bg-white border border-red-300 rounded px-3 py-1.5 hover:bg-red-50 transition-all group">
-                                            <Icons.Clock className="w-4 h-4 text-red-500" />
-                                            <span className="text-xs font-bold text-red-700 uppercase tracking-tighter">{reminderDate ? new Date(reminderDate).toLocaleString('tr-TR') : 'Tarih ve Saat Seçiniz'}</span>
-                                        </button>
-                                        {isReminderDatePickerOpen && (
-                                            <div className="absolute bottom-full left-0 mb-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[220px]">
-                                                <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
-                                                <button onClick={() => setIsReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase font-black tracking-widest">Uygula</button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                <button onClick={() => setIsChecklistOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors text-xs font-bold uppercase tracking-widest font-black">
-                                  <Icons.ClipboardList className="w-4 h-4" /> Kalan İşler / Miktarlar
-                                </button>
-                                <button onClick={() => setIsMaterialTableModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors text-xs font-bold uppercase tracking-widest font-black">
-                                  <Icons.ExternalLink className="w-4 h-4" /> ONLİNE GELEN MALZEME LİSTESİ
-                                </button>
-                            </div>
-                         </div>
+                      <React.Fragment>
+                        {/* Mobilde Akış Notları okuma alanını büyütmek için kompakt alt aksiyon barı */}
+                        {!isMobileComposerOpen && (
+                          <div className="flex sm:hidden items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsMobileComposerOpen(true)}
+                              className="flex-1 min-h-[44px] px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm"
+                            >
+                              <Icons.Plus className="w-4 h-4" />
+                              <span>Akış Notu Ekle</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsChecklistOpen(true)}
+                              className="min-h-[44px] px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg font-black text-xs uppercase tracking-wider flex items-center justify-center"
+                              title="Kalan İşler / Miktarlar"
+                            >
+                              <Icons.ClipboardList className="w-5 h-5" />
+                            </button>
+                            {demand.status === DemandStatus.ISLEMDE && (
+                              <button
+                                type="button"
+                                onClick={handleStartCompletion}
+                                className="min-h-[44px] px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-black text-xs uppercase tracking-wider shadow-sm"
+                              >
+                                Bitir
+                              </button>
+                            )}
+                          </div>
+                        )}
 
-                         <div className="flex gap-2 items-start">
-                             <div className="flex-grow">
-                               <RichTextEditor 
-                                 value={newProgressText} 
-                                 onChange={setNewProgressText} 
-                                 placeholder="Akış notu giriniz (Metni fare ile seçip yukarıdan biçimlendirebilirsiniz)..." 
-                                 minHeight="60px"
-                               />
+                        <div className={`${isMobileComposerOpen ? 'flex' : 'hidden sm:flex'} flex-col gap-3`}>
+                           {isMobileComposerOpen && (
+                             <div className="flex sm:hidden items-center justify-between border-b border-gray-200 pb-2">
+                               <span className="text-xs font-black text-gray-700 uppercase tracking-wider">Yeni Akış Notu</span>
+                               <button
+                                 type="button"
+                                 onClick={() => setIsMobileComposerOpen(false)}
+                                 className="text-xs font-black text-gray-500 hover:text-gray-800 uppercase px-2 py-1 bg-gray-200 rounded"
+                               >
+                                 Gizle
+                               </button>
                              </div>
-                             <div className="flex flex-col gap-2 w-24 shrink-0">
-                                 <button onClick={() => { 
-                                     if (!newProgressText.trim() && !hasDeliveredDocument) {
-                                         showToast("Lütfen bir akış notu yazınız!", "warning");
-                                         return;
-                                     }
-                                     handlePreview(); 
-                                     handleCloseModal(); 
-                                 }} className="w-full py-2 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors uppercase font-black tracking-widest cursor-pointer">
-                                     Ekle
-                                 </button>
-                                 {demand.status === DemandStatus.ISLEMDE && (
-                                    <button onClick={handleStartCompletion} className="w-full py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-200 text-xs font-bold transition-colors uppercase font-black tracking-widest">
-                                        Bitir
-                                    </button>
-                                 )}
-                             </div>
-                         </div>
-                      </div>
+                           )}
+                           <div className="flex flex-wrap gap-2 sm:gap-3 items-center justify-between">
+                              <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+                                  <div className="relative">
+                                      <button onClick={() => setIsDatePickerOpen(!isDatePickerOpen)} className="flex items-center gap-2 bg-white border border-gray-300 rounded px-2.5 py-1.5 hover:bg-gray-50 hover:border-blue-300 transition-all group">
+                                          <Icons.Clock className="w-4 h-4 text-gray-500 group-hover:text-blue-500" />
+                                          <span className="text-xs font-medium text-gray-700 group-hover:text-blue-700 uppercase tracking-tighter font-black">{customDateDisplay}</span>
+                                      </button>
+                                      {isDatePickerOpen && (
+                                         <div className="absolute bottom-full left-0 mb-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[200px]">
+                                             <input type="datetime-local" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                             <button onClick={() => setIsDatePickerOpen(false)} className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase font-bold tracking-tighter">Uygula</button>
+                                         </div>
+                                      )}
+                                  </div>
+                                  <label className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded cursor-pointer border transition-colors ${isReminder ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                                      <input type="checkbox" checked={isReminder} onChange={e => {
+                                          setIsReminder(e.target.checked);
+                                          if (e.target.checked && !reminderDate) {
+                                              setReminderDate(toLocalISOString(new Date()));
+                                          }
+                                      }} className="rounded text-red-600 focus:ring-red-500"/>
+                                      <span className="text-xs font-bold uppercase tracking-wider font-black">Hatırlatma</span>
+                                  </label>
+                                  {isReminder && (
+                                      <div className="relative">
+                                          <button onClick={() => setIsReminderDatePickerOpen(!isReminderDatePickerOpen)} className="flex items-center gap-2 bg-white border border-red-300 rounded px-3 py-1.5 hover:bg-red-50 transition-all group">
+                                              <Icons.Clock className="w-4 h-4 text-red-500" />
+                                              <span className="text-xs font-bold text-red-700 uppercase tracking-tighter">{reminderDate ? new Date(reminderDate).toLocaleString('tr-TR') : 'Tarih ve Saat Seçiniz'}</span>
+                                          </button>
+                                          {isReminderDatePickerOpen && (
+                                              <div className="absolute bottom-full left-0 mb-2 bg-white p-3 shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col gap-2 min-w-[220px]">
+                                                  <input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} className="text-sm border border-gray-300 rounded p-1 text-gray-900 w-full" />
+                                                  <button onClick={() => setIsReminderDatePickerOpen(false)} className="w-full px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-blue-700 font-medium uppercase font-black tracking-widest">Uygula</button>
+                                              </div>
+                                          )}
+                                      </div>
+                                  )}
+                                  <button onClick={() => setIsChecklistOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors text-xs font-bold uppercase tracking-wider font-black">
+                                    <Icons.ClipboardList className="w-4 h-4" /> Kalan İşler / Miktarlar
+                                  </button>
+                                  <button onClick={() => setIsMaterialTableModalOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors text-xs font-bold uppercase tracking-wider font-black">
+                                    <Icons.ExternalLink className="w-4 h-4" /> ONLİNE GELEN MALZEME LİSTESİ
+                                  </button>
+                              </div>
+                           </div>
+
+                           <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-start">
+                               <div className="flex-grow min-w-0">
+                                 <RichTextEditor 
+                                   value={newProgressText} 
+                                   onChange={setNewProgressText} 
+                                   placeholder="Akış notu giriniz (Metni fare ile seçip yukarıdan biçimlendirebilirsiniz)..." 
+                                   minHeight="60px"
+                                 />
+                               </div>
+                               <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-24 shrink-0">
+                                   <button onClick={() => { 
+                                       if (!newProgressText.trim() && !hasDeliveredDocument) {
+                                           if (onNotify) onNotify("Lütfen bir akış notu yazınız!", "warning");
+                                           else alert("Lütfen bir akış notu yazınız!");
+                                           return;
+                                       }
+                                       handlePreview(); 
+                                       handleCloseModal(); 
+                                   }} className="flex-1 sm:w-full py-2.5 sm:py-2 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors uppercase font-black tracking-widest cursor-pointer min-h-[44px] sm:min-h-0">
+                                       Ekle
+                                   </button>
+                                   {demand.status === DemandStatus.ISLEMDE && (
+                                      <button onClick={handleStartCompletion} className="flex-1 sm:w-full py-2.5 sm:py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-200 text-xs font-bold transition-colors uppercase font-black tracking-widest min-h-[44px] sm:min-h-0">
+                                          Bitir
+                                      </button>
+                                   )}
+                               </div>
+                           </div>
+                        </div>
+                      </React.Fragment>
                     )}
                 </div>
               )}
@@ -2387,7 +2663,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
     };
 
     // --- DemandModal (Yeni/Düzenle) ---
-    const DemandModal = ({ isOpen, onClose, onSave, demandToEdit, storedAssignedNames = [] }) => {
+    const DemandModal = ({ isOpen, onClose, onSave, demandToEdit, draftToImport, storedAssignedNames = [] }) => {
       const [formData, setFormData] = useState({ title: '', description: '', assignedToUnits: [], assignedUnitToAdd: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '', addAssignedToList: false });
       const [checklistInput, setChecklistInput] = useState('');
       const [processedChecklist, setProcessedChecklist] = useState([]);
@@ -2406,6 +2682,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [checklistActiveSheet, setChecklistActiveSheet] = useState('');
       const [checklistHeaders, setChecklistHeaders] = useState([]);
       const [checklistMap, setChecklistMap] = useState({ name: '', pn: '', sn: '', qty: '' });
+      const [showSignedDocGuide, setShowSignedDocGuide] = useState(false);
 
       useEffect(() => {
         if (demandToEdit) {
@@ -2434,6 +2711,69 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           setTransferToMaterialList(true);
           setShowMaterialTable(false);
           setMaterialTableMode('selection');
+        } else if (draftToImport) {
+          const upper = (s) => String(s || '').trim().toLocaleUpperCase('tr-TR');
+          const rawType = `${upper(draftToImport.talepTuru)} ${upper(draftToImport.formBasligi)}`;
+          let mappedType = DemandType.MALZEME;
+          if (rawType.includes('ONARIM') || rawType.includes('BAKIM')) mappedType = DemandType.ONARIM;
+          else if (rawType.includes('KALİBRASYON') || rawType.includes('KALIBRASYON')) mappedType = DemandType.KALIBRASYON;
+          else if (rawType.includes('EĞİTİM') || rawType.includes('EGITIM')) mappedType = DemandType.EGITIM;
+          else if (rawType.includes('YATIRIM')) mappedType = DemandType.MALZEME_YATIRIM;
+          else if (rawType.includes('ABONELİK') || rawType.includes('ABONELIK')) mappedType = DemandType.ABONELIK;
+          else if (rawType.includes('HİZMET') || rawType.includes('HIZMET')) mappedType = DemandType.HIZMET;
+
+          const normUnit = (s) => upper(s).replace(/[\s\-_]/g, '');
+          const matchedUnits = [];
+          const candidateUnitSources = [draftToImport.birim, draftToImport.kuyrukNo].filter(Boolean);
+          for (const src of candidateUnitSources) {
+            const normSrc = normUnit(src);
+            const found = Object.values(RequestingUnit).find(u => normSrc === normUnit(u) || normSrc.includes(normUnit(u)));
+            if (found && !matchedUnits.includes(found)) {
+              matchedUnits.push(found);
+            }
+          }
+          if (matchedUnits.length === 0 && draftToImport.birim) {
+            matchedUnits.push(upper(draftToImport.birim));
+          }
+
+          const titleParts = [draftToImport.kuyrukNo, draftToImport.malzemeOzet].filter(Boolean).map(upper);
+          const autoTitle = titleParts.length > 0
+            ? titleParts.join(' - ')
+            : upper(draftToImport.formBasligi || draftToImport.talepTuru || `TASLAK TALEP ${draftToImport.talepNo}`);
+
+          const descLines = [
+            draftToImport.formBasligi ? `<div><b>FORM BAŞLIĞI:</b> ${upper(draftToImport.formBasligi)}</div>` : '',
+            draftToImport.talepNo ? `<div><b>TASLAK TALEP NO:</b> ${upper(draftToImport.talepNo)}</div>` : '',
+            draftToImport.birim ? `<div><b>BİRİM / HAVA ARACI:</b> ${upper(draftToImport.birim)}</div>` : '',
+            draftToImport.kuyrukNo ? `<div><b>KUYRUK / TESCİL NO:</b> ${upper(draftToImport.kuyrukNo)}</div>` : '',
+            draftToImport.malzemeOzet ? `<div><b>MALZEME / İŞLEM ÖZETİ:</b> ${upper(draftToImport.malzemeOzet)}</div>` : '',
+            draftToImport.talepEden ? `<div><b>TALEP EDEN PERSONEL:</b> ${upper(draftToImport.talepEden)}</div>` : '',
+            draftToImport.tarih ? `<div><b>TALEP TARİHİ:</b> ${upper(draftToImport.tarih)}</div>` : '',
+            hasSignedDocument(draftToImport)
+              ? `<div><b>YÜKLENEN BELGE (ISLAK İMZALI TARANMIŞ - ${upper(draftToImport.belgeYuklemeTarihi)}):</b> <a href="${getSafeDocumentUrl(draftToImport.belgeLinki)}" target="_blank" rel="noopener noreferrer">${draftToImport.belgeLinki}</a></div>`
+              : ''
+          ].filter(Boolean).join('');
+
+          setFormData({
+            title: autoTitle,
+            description: descLines,
+            assignedToUnits: [],
+            assignedUnitToAdd: '',
+            type: mappedType,
+            requestingUnits: matchedUnits,
+            unitToAdd: '',
+            priority: DemandPriority.ORTA,
+            status: DemandStatus.ISLEMDE,
+            ebysNumber: '',
+            ebysDate: parseDraftDateToISOInput(draftToImport.tarih),
+            addAssignedToList: false
+          });
+          setChecklistInput('');
+          setProcessedChecklist([]);
+          setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
+          setTransferToMaterialList(true);
+          setShowMaterialTable(false);
+          setMaterialTableMode('selection');
         } else {
           setFormData({ title: '', description: '', assignedToUnits: [], assignedUnitToAdd: '', type: DemandType.MALZEME, requestingUnits: [], unitToAdd: '', priority: DemandPriority.ORTA, status: DemandStatus.ISLEMDE, ebysNumber: '', ebysDate: '', addAssignedToList: false });
           setChecklistInput('');
@@ -2445,7 +2785,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         }
         setChecklistWorkbook(null);
         setChecklistActiveSheet('');
-      }, [demandToEdit, isOpen]);
+        setShowSignedDocGuide(false);
+      }, [demandToEdit, draftToImport, isOpen]);
       
       const handleTitleChange = (e) => {
         const start = e.target.selectionStart;
@@ -2794,8 +3135,20 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       const handleSubmit = (e) => {
         e.preventDefault();
-        if (!formData.title || !formData.ebysNumber || !formData.ebysDate || formData.requestingUnits.length === 0) {
-            if (formData.requestingUnits.length === 0) alert('Lütfen en az bir talep eden birim seçin.');
+        if (!formData.title.trim()) {
+            alert('Lütfen Talep Başlığı giriniz.');
+            return;
+        }
+        if (!formData.ebysNumber.trim()) {
+            alert('Lütfen EBYS Numarası giriniz.');
+            return;
+        }
+        if (!formData.ebysDate) {
+            alert('Lütfen EBYS Tarihi seçiniz.');
+            return;
+        }
+        if (formData.requestingUnits.length === 0) {
+            alert('Lütfen en az bir talep eden birim seçin.');
             return;
         }
 
@@ -2835,15 +3188,44 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       if (!isOpen) return null;
 
       return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 backdrop-blur-sm pointer-events-auto" onWheel={e=>e.stopPropagation()}>
-          <div className="bg-white rounded-lg shadow-xl w-full modal-container-wide p-8 font-serif relative" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between mb-6 border-b pb-4">
-                <h2 className="text-2xl font-semibold text-gray-900 uppercase font-black tracking-widest">{showMaterialTable ? (materialTableMode === 'selection' ? 'LİSTE GÖRÜNTÜLEME SEÇENEKLERİ' : materialTableMode === 'online' ? 'ONLİNE GELEN MALZEME LİSTESİ' : 'OFFLINE ÇALIŞMA MODU') : (demandToEdit ? 'Düzenle' : 'Yeni Kayıt')}</h2>
-                <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-2 sm:p-4 backdrop-blur-sm pointer-events-auto" onWheel={e=>e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-full modal-container-wide p-4 sm:p-8 font-serif relative" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4 sm:mb-6 border-b pb-3 sm:pb-4">
+                <h2 className="text-lg sm:text-2xl font-semibold text-gray-900 uppercase font-black tracking-wider">{showMaterialTable ? (materialTableMode === 'selection' ? 'LİSTE GÖRÜNTÜLEME SEÇENEKLERİ' : materialTableMode === 'online' ? 'ONLİNE GELEN MALZEME LİSTESİ' : 'OFFLINE ÇALIŞMA MODU') : (demandToEdit ? 'Düzenle' : (draftToImport ? 'Taslak Talepten Kayıt Oluştur' : 'Yeni Kayıt'))}</h2>
+                <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
             </div>
             {showMaterialTable ? renderMaterialTableContent() : (
-            <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6 max-h-[82vh] overflow-y-auto pr-1 sm:pr-2">
+                {draftToImport && !demandToEdit && (
+                  <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 sm:p-4 text-xs text-amber-900 space-y-2">
+                    <div className="font-black uppercase tracking-wider flex flex-wrap items-center gap-2">
+                      <span>Taslak Talep Aktarımı</span>
+                      {draftToImport.talepNo && <span className="bg-amber-200 px-2 py-0.5 rounded font-mono">#{draftToImport.talepNo}</span>}
+                      {draftToImport.talepEden && <span>· {draftToImport.talepEden}</span>}
+                    </div>
+                    <p className="font-bold">Lütfen EBYS Numarasını girip Kaydet butonuna basınız. Kayıt tamamlandığında portalda A sütununa EBYS numarası ve Durum sütununa &quot;ONAYLANDI&quot; yazılacaktır.</p>
+                    {hasSignedDocument(draftToImport) && (
+                      <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-emerald-900">
+                        <div className="space-y-0.5">
+                          <div className="font-black uppercase tracking-wider flex items-center gap-1.5">
+                            <Icons.CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Yüklenen Belge: Islak İmzalı Taranmış</span>
+                          </div>
+                          <div className="text-[11px] font-bold">Belge Yükleme Tarihi: <span className="font-mono">{draftToImport.belgeYuklemeTarihi}</span></div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowSignedDocGuide(true)}
+                          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                        >
+                          <Icons.Eye className="w-4 h-4" />
+                          <span>Belgeyi Göster</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div className="space-y-2">
                        <label className="text-sm font-black text-gray-700 uppercase tracking-widest">Talep Başlığı</label>
                        <input type="text" placeholder="Başlık" value={formData.title} onChange={handleTitleChange} className="w-full border p-3 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" required/>
@@ -2862,12 +3244,12 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                                     placeholder="Firma veya Kişi Adı" 
                                     value={formData.assignedUnitToAdd} 
                                     onChange={handleAssignedUnitToAddChange} 
-                                    className="flex-grow border p-2 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" 
+                                    className="flex-grow min-w-0 border p-2 rounded text-gray-900 focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-tighter" 
                                 />
                                 <datalist id="storedNamesList">
                                     {storedAssignedNames.map(name => <option key={name} value={name} />)}
                                 </datalist>
-                                <button type="button" onClick={handleAddAssignedUnit} className="bg-green-600 text-white px-4 py-2 rounded text-xs font-black uppercase shadow-md hover:bg-green-700">Ekle</button>
+                                <button type="button" onClick={handleAddAssignedUnit} className="bg-green-600 text-white px-4 py-2 rounded text-xs font-black uppercase shadow-md hover:bg-green-700 shrink-0">Ekle</button>
                             </div>
                             <label className="flex items-center gap-2 text-xs font-black text-gray-500 uppercase cursor-pointer select-none mt-1">
                                 <input type="checkbox" checked={formData.addAssignedToList} onChange={e => setFormData({...formData, addAssignedToList: e.target.checked})} className="rounded text-blue-600" />
@@ -2877,14 +3259,14 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                     </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                    <div className="space-y-2">
-                      <label className="text-sm font-black text-gray-700 uppercase tracking-widest">EBYS No</label>
-                      <input type="text" placeholder="EBYS No" value={formData.ebysNumber} onChange={e=>setFormData({...formData, ebysNumber:e.target.value})} className="w-full border p-3 rounded text-gray-900 font-bold uppercase"/>
+                      <label className="text-sm font-black text-gray-700 uppercase tracking-widest">EBYS No *</label>
+                      <input type="text" placeholder="EBYS No" value={formData.ebysNumber} onChange={e=>setFormData({...formData, ebysNumber:e.target.value.toLocaleUpperCase('tr-TR')})} className="w-full border p-3 rounded text-gray-900 font-bold uppercase" required/>
                    </div>
                    <div className="space-y-2">
-                      <label className="text-sm font-black text-gray-700 uppercase tracking-widest">EBYS Tarihi</label>
-                      <input type="date" value={formData.ebysDate} onChange={e=>setFormData({...formData, ebysDate:e.target.value})} className="w-full border p-3 rounded text-gray-900 uppercase"/>
+                      <label className="text-sm font-black text-gray-700 uppercase tracking-widest">EBYS Tarihi *</label>
+                      <input type="date" value={formData.ebysDate} onChange={e=>setFormData({...formData, ebysDate:e.target.value})} className="w-full border p-3 rounded text-gray-900 uppercase" required/>
                    </div>
                 </div>
 
@@ -2898,13 +3280,13 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
    />
 </div>
                 
-                <div className="border border-purple-100 p-4 rounded-xl bg-purple-50/30 space-y-4">
+                <div className="border border-purple-100 p-3 sm:p-4 rounded-xl bg-purple-50/30 space-y-4">
                     <label className="block text-sm font-black text-purple-700 uppercase flex items-center gap-2 tracking-widest">
                       <Icons.ClipboardList className="w-4 h-4"/> Checklist / PN & SN Ayrıştırma
                     </label>
                     <div className="space-y-3">
-                        <div className="flex gap-2">
-                           <button type="button" onClick={() => checklistFileRef.current.click()} className="px-4 bg-green-600 text-white rounded-lg text-xs font-black uppercase shadow-md hover:bg-green-700 transition-all shrink-0 flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                           <button type="button" onClick={() => checklistFileRef.current.click()} className="px-4 py-2.5 bg-green-600 text-white rounded-lg text-xs font-black uppercase shadow-md hover:bg-green-700 transition-all shrink-0 flex items-center justify-center gap-2">
                                <Icons.CloudUp className="w-4 h-4"/> Excel Yükle
                            </button>
                            <input type="file" ref={checklistFileRef} onChange={onChecklistExcelUpload} className="hidden" accept=".xlsx, .xls" />
@@ -2914,7 +3296,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                               onChange={(e) => setChecklistInput(e.target.value)}
                               className="flex-grow border p-3 rounded-lg text-xs text-gray-900 bg-white min-h-[40px] uppercase font-bold"
                            />
-                           <button type="button" onClick={handleAktar} className="px-6 bg-purple-600 text-white rounded-lg text-sm font-black uppercase shadow-md hover:bg-purple-700 transition-all shrink-0">Aktar</button>
+                           <button type="button" onClick={handleAktar} className="px-6 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-black uppercase shadow-md hover:bg-purple-700 transition-all shrink-0">Aktar</button>
                         </div>
 
                         {checklistWorkbook && (
@@ -2984,11 +3366,11 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                         <div className="space-y-3">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest font-black">Manuel Malzeme Ekle:</label>
                             {manualChecklistItems.map((item, idx) => (
-                                <div key={idx} className="flex gap-2">
-                                    <input type="text" placeholder="Malzeme Adı" value={item.name} onChange={e => handleUpdateManualRow(idx, 'name', e.target.value, e)} className="flex-grow border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
-                                    <input type="text" placeholder="P/N" value={item.partNo} onChange={e => handleUpdateManualRow(idx, 'partNo', e.target.value, e)} className="w-40 border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
-                                    <input type="text" placeholder="S/N" value={item.serialNo} onChange={e => handleUpdateManualRow(idx, 'serialNo', e.target.value, e)} className="w-40 border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
-                                    <input type="number" placeholder="Adet" value={item.requested} onChange={e => handleUpdateManualRow(idx, 'requested', parseInt(e.target.value) || 0)} className="w-24 border p-2 rounded-lg text-xs text-gray-900 font-bold" />
+                                <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                                    <input type="text" placeholder="Malzeme Adı" value={item.name} onChange={e => handleUpdateManualRow(idx, 'name', e.target.value, e)} className="sm:col-span-5 border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
+                                    <input type="text" placeholder="P/N" value={item.partNo} onChange={e => handleUpdateManualRow(idx, 'partNo', e.target.value, e)} className="sm:col-span-3 border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
+                                    <input type="text" placeholder="S/N" value={item.serialNo} onChange={e => handleUpdateManualRow(idx, 'serialNo', e.target.value, e)} className="sm:col-span-2 border p-2 rounded-lg text-xs text-gray-900 uppercase font-black" />
+                                    <input type="number" placeholder="Adet" value={item.requested} onChange={e => handleUpdateManualRow(idx, 'requested', parseInt(e.target.value) || 0)} className="sm:col-span-2 border p-2 rounded-lg text-xs text-gray-900 font-bold" />
                                 </div>
                             ))}
                             <button type="button" onClick={handleAddManualRow} className="text-xs text-blue-600 font-black hover:underline uppercase tracking-tight">+ Yeni Satır Ekle</button>
@@ -3048,6 +3430,11 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
               isOpen={showUploadSuccess} 
               onClose={() => setShowUploadSuccess(false)} 
               message="Malzeme listesi başarıyla güncellendi." 
+          />
+          <SignedDocumentGuideModal
+              isOpen={showSignedDocGuide}
+              onClose={() => setShowSignedDocGuide(false)}
+              draft={draftToImport}
           />
         </div>
       );
@@ -3146,8 +3533,16 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
               </div>
               <span className="flex items-center gap-1.5 uppercase font-bold"><Icons.Calendar className="w-4 h-4" />{ebysDateDisplay}</span>
             </div>
-            <div className="flex justify-between items-center text-xs">
+            <div className="flex justify-between items-center text-xs pt-1">
               <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${pStyles.bg} ${pStyles.text} uppercase font-black tracking-widest`}><Icons.Flag className="w-3 h-3"/>{demand.priority}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onShowProgress(demand); }}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-black uppercase tracking-wider text-[11px] transition-colors"
+              >
+                <Icons.Eye className="w-3.5 h-3.5" />
+                <span>Akış Notları</span>
+              </button>
             </div>
           </div>
           {isProcessing && (
@@ -3227,28 +3622,353 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       </div>
     );
 
-    // --- Header ---
-    const Header = ({ onAddDemand, showUploadButton, onUpload }) => (
-      <header className="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-            <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTcwam1sYXJkazRoMTUxMWM1b2h6MTUwZDY1MXo5eThraGw4dG5kMCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/n7frjzkahqcqyik0o3/giphy.gif" alt="Logo" className="h-12 w-auto mix-blend-multiply" />
-            <h1 className="text-xl font-bold text-gray-800 hidden sm:block uppercase tracking-widest font-black">Task Line</h1>
+    // --- SignedDocumentGuideModal (Islak İmzalı Taranmış Belge Önizleme & Tarih Kopyalama Not Penceresi) ---
+    const SignedDocumentGuideModal = ({ isOpen, onClose, draft }) => {
+      const [copied, setCopied] = useState(false);
+      const dateInputRef = useRef(null);
+
+      useEffect(() => {
+        setCopied(false);
+      }, [isOpen, draft]);
+
+      if (!isOpen || !draft) return null;
+
+      const uploadDateText = String(draft.belgeYuklemeTarihi || '').trim();
+      const safeUrl = getSafeDocumentUrl(draft.belgeLinki);
+
+      const copyUploadDate = () => {
+        if (!uploadDateText) return;
+        if (dateInputRef.current) {
+          dateInputRef.current.focus();
+          dateInputRef.current.select();
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(uploadDateText).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 3000);
+          }).catch(() => {
+            try {
+              document.execCommand('copy');
+              setCopied(true);
+              setTimeout(() => setCopied(false), 3000);
+            } catch (e) {}
+          });
+        } else {
+          try {
+            document.execCommand('copy');
+            setCopied(true);
+            setTimeout(() => setCopied(false), 3000);
+          } catch (e) {}
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/70 z-[80] backdrop-blur-sm flex justify-center items-center p-3 sm:p-4" onClick={onClose}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden text-gray-900 border border-emerald-200" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 sm:p-5 bg-emerald-50 border-b border-emerald-200 gap-3">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-1.5 bg-emerald-600 text-white px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider mb-1.5">
+                  <Icons.CheckCircle className="w-3.5 h-3.5" />
+                  <span>Yüklenen Belge: Islak İmzalı Taranmış</span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-gray-900 uppercase tracking-tight truncate">
+                  Belge Açmadan Önce Oluşturma Tarihini Kopyalayın
+                </h3>
+                {(draft.talepNo || draft.malzemeOzet) && (
+                  <p className="text-[11px] font-bold text-gray-600 uppercase truncate mt-0.5">
+                    {draft.talepNo ? `#${draft.talepNo} — ` : ''}{draft.malzemeOzet || draft.formBasligi}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                title="Kapat"
+              >
+                <Icons.X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-black text-gray-700 uppercase tracking-wider">
+                  Oluşturma / Belge Yükleme Tarihi (Tarih · Saat:Dk)
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    ref={dateInputRef}
+                    type="text"
+                    readOnly
+                    value={uploadDateText}
+                    onClick={(e) => e.target.select()}
+                    className="flex-1 px-3.5 py-2.5 bg-gray-50 border-2 border-emerald-300 rounded-xl font-mono text-sm sm:text-base font-black text-gray-900 select-all focus:outline-none focus:border-emerald-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={copyUploadDate}
+                    className={`min-h-[44px] px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-sm cursor-pointer shrink-0 ${copied ? 'bg-emerald-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+                  >
+                    {copied ? 'KOPYALANDI ✓' : 'TARİHİ KOPYALA'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 sm:p-4 space-y-1.5 text-amber-950">
+                <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-800">
+                  <Icons.ExclamationTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                  <span>Açıklama / Arama Notu</span>
+                </div>
+                <p className="text-xs sm:text-sm font-bold leading-relaxed">
+                  Açılan sayfada tüm yüklemeleri göreceksiniz. Sizin eşleşme yapabilmek için &quot;oluşturma tarihi (tarih saat:dk)&quot; ile en eşleşen veriyi bulup açmanız için yukarıdaki tarihi kopyalamanız önerilir. Açılan sayfada aratınız (Ctrl+F).
+                </p>
+              </div>
+
+              {safeUrl && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[11px] font-mono text-gray-600 break-all">
+                  <span className="font-sans font-black text-gray-500 uppercase mr-1.5">Hedef Sayfa:</span>
+                  {safeUrl}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 p-4 sm:px-6 bg-gray-50 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-[44px] px-5 py-2.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-black text-xs uppercase tracking-wider cursor-pointer"
+              >
+                Kapat / Geri Dön
+              </button>
+              {safeUrl && (
+                <a
+                  href={safeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={copyUploadDate}
+                  className="min-h-[44px] px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-md flex items-center justify-center gap-2 transition-colors"
+                >
+                  <span>Tarihi Kopyala ve Belge Sayfasını Aç</span>
+                  <Icons.ExternalLink className="w-4 h-4" />
+                </a>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+      );
+    };
+
+    // --- TaslakTaleplerModal (Onay Bekleyen Talepler Portalı) ---
+    const TaslakTaleplerModal = ({ isOpen, onClose, drafts, isLoading, error, scriptNeedsUpdate, onRefresh, onTransferDraft }) => {
+      const [searchTerm, setSearchTerm] = useState('');
+      const [docGuideDraft, setDocGuideDraft] = useState(null);
+
+      if (!isOpen) return null;
+
+      const filteredDrafts = (drafts || []).filter(d => {
+        const q = searchTerm.trim().toLocaleLowerCase('tr-TR');
+        if (!q) return true;
+        return (
+          (d.talepNo || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.talepTuru || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.formBasligi || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.birim || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.kuyrukNo || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.malzemeOzet || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.talepEden || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.belgeYuklemeTarihi || '').toLocaleLowerCase('tr-TR').includes(q)
+        );
+      });
+
+      return (
+        <React.Fragment>
+        <div className="fixed inset-0 bg-black/60 z-[65] backdrop-blur-sm flex justify-center items-center p-0 sm:p-4 overflow-hidden" onClick={onClose}>
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full max-w-6xl h-[100dvh] sm:h-auto sm:max-h-[90vh] flex flex-col overflow-hidden text-gray-900" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-amber-50/70 flex-shrink-0 gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Icons.Inbox className="w-6 h-6 text-amber-700 shrink-0" />
+                  <h2 className="text-base sm:text-xl font-black text-gray-900 uppercase tracking-wider truncate">Taslak Talepler (Onay Bekleyenler)</h2>
+                </div>
+                <p className="text-[11px] sm:text-xs text-gray-600 font-bold mt-0.5 uppercase tracking-wide">
+                  &quot;ONAY BEKLİYOR&quot; durumundaki talepleri Task Line şablonuna aktarabilirsiniz.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={isLoading}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-100 text-gray-800 border border-gray-300 rounded-lg text-xs font-black uppercase tracking-wider shadow-sm transition-colors min-h-[40px]"
+                  title="Listeyi Yenile"
+                >
+                  <Icons.Refresh className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Yenile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
+                  title="Kapat"
+                >
+                  <Icons.X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3 sm:p-4 border-b border-gray-100 bg-white flex-shrink-0">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Icons.Search className="w-4 h-4 text-gray-400" />
+                </div>
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Taslaklarda ara (Talep No, Kuyruk No, Malzeme, Personel...)"
+                  className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide focus:ring-amber-500 focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-5 bg-gray-50 space-y-3" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-500 gap-3">
+                  <Icons.Refresh className="w-8 h-8 animate-spin text-amber-600" />
+                  <span className="text-xs sm:text-sm font-black uppercase tracking-wider">Onay bekleyen talepler yükleniyor...</span>
+                </div>
+              ) : error ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-center space-y-3">
+                  <p className="text-sm font-black text-red-700 uppercase">{error}</p>
+                  <button type="button" onClick={onRefresh} className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase tracking-wider hover:bg-red-700">Tekrar Dene</button>
+                </div>
+              ) : scriptNeedsUpdate ? (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 space-y-3 text-gray-800">
+                  <h3 className="text-sm sm:text-base font-black text-amber-900 uppercase tracking-wide">
+                    Portal Apps Script Güncellemesi Gerekiyor
+                  </h3>
+                  <p className="text-xs sm:text-sm font-bold text-amber-800 leading-relaxed">
+                    Bağlanılan Google Apps Script servisi henüz &quot;getPendingDrafts / approveDraft / completeDraft&quot; komutlarını döndürmüyor. Hazırlanan &quot;taslak-portal-apps-script.gs&quot; kodunu ilgili Google E-Tablonuzun Apps Script düzenleyicisine ekleyip Web Uygulamasını yeniden dağıtmanız gerekmektedir.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onRefresh();
+                      }}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-black uppercase tracking-wider"
+                    >
+                      Tekrar Kontrol Et
+                    </button>
+                  </div>
+                </div>
+              ) : filteredDrafts.length === 0 ? (
+                <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-10 text-center text-gray-500 font-black text-xs sm:text-sm uppercase tracking-wider">
+                  Onay bekleyen taslak talep bulunmuyor.
+                </div>
+              ) : (
+                filteredDrafts.map((draft, idx) => {
+                  const signedDocAvailable = hasSignedDocument(draft);
+                  return (
+                  <div key={`${draft.talepNo || idx}-${draft.rowIndex}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="bg-gray-900 text-white px-2 py-0.5 rounded font-mono font-bold">{draft.talepNo || `SATIR ${draft.rowIndex}`}</span>
+                        <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded font-black uppercase tracking-wide">{draft.durum || 'ONAY BEKLİYOR'}</span>
+                        {draft.birim && <span className="bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded font-black uppercase">{draft.birim}</span>}
+                        {signedDocAvailable && (
+                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded font-black uppercase tracking-wide inline-flex items-center gap-1">
+                            <Icons.CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                            YÜKLENEN BELGE: ISLAK İMZALI TARANMIŞ
+                          </span>
+                        )}
+                        {draft.tarih && <span className="text-gray-500 font-bold flex items-center gap-1"><Icons.Calendar className="w-3.5 h-3.5" />{draft.tarih}</span>}
+                      </div>
+
+                      <div className="text-sm sm:text-base font-black text-gray-900 uppercase tracking-tight break-words">
+                        {draft.kuyrukNo ? `${draft.kuyrukNo} — ` : ''}{draft.malzemeOzet || draft.formBasligi || 'İSİMSİZ TASLAK'}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-gray-600 uppercase font-bold">
+                        {draft.talepTuru && <div><span className="text-gray-400">TALEP TÜRÜ:</span> {draft.talepTuru}</div>}
+                        {draft.formBasligi && <div><span className="text-gray-400">FORM BAŞLIĞI:</span> {draft.formBasligi}</div>}
+                        {draft.talepEden && <div><span className="text-gray-400">TALEP EDEN:</span> {draft.talepEden}</div>}
+                        {draft.malzemeOzet && <div className="sm:col-span-2"><span className="text-gray-400">MALZEME / İŞLEM ÖZETİ:</span> {draft.malzemeOzet}</div>}
+                      </div>
+
+                      {signedDocAvailable && (
+                        <div className="bg-emerald-50/80 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-900 font-bold flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="font-black uppercase">Islak İmzalı Taranmış Belge Mevcut</span>
+                          <span className="text-emerald-700 font-mono">Yükleme Tarihi: {draft.belgeYuklemeTarihi}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-stretch justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+                      {signedDocAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => setDocGuideDraft(draft)}
+                          className="w-full lg:w-auto min-h-[44px] px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <Icons.Eye className="w-4 h-4" />
+                          <span>Islak İmzalı Belgeyi Göster</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onTransferDraft(draft)}
+                        className="w-full lg:w-auto min-h-[44px] px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>Task Line Aktar</span>
+                        <Icons.ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+        <SignedDocumentGuideModal
+          isOpen={!!docGuideDraft}
+          onClose={() => setDocGuideDraft(null)}
+          draft={docGuideDraft}
+        />
+        </React.Fragment>
+      );
+    };
+
+    // --- Header ---
+    const Header = ({ onAddDemand, onOpenDrafts, pendingDraftCount = 0, showUploadButton, onUpload }) => (
+      <header className="bg-white shadow-md px-3 py-2.5 sm:p-4 flex justify-between items-center sticky top-0 z-50 gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+            <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTcwam1sYXJkazRoMTUxMWM1b2h6MTUwZDY1MXo5eThraGw4dG5kMCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/n7frjzkahqcqyik0o3/giphy.gif" alt="Logo" className="h-9 sm:h-12 w-auto mix-blend-multiply shrink-0" />
+            <h1 className="text-lg sm:text-xl font-bold text-gray-800 hidden sm:block uppercase tracking-widest font-black whitespace-nowrap">Task Line</h1>
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           {showUploadButton && (
-            <button onClick={onUpload} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors uppercase font-black text-xs sm:text-sm tracking-widest shadow-md">
-              <Icons.CloudUp className="w-5 h-5" /><span>Veri Yükle</span>
+            <button onClick={onUpload} className="flex items-center gap-1.5 px-2.5 py-2 sm:px-3 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors uppercase font-black text-[11px] sm:text-sm tracking-wide shadow-md whitespace-nowrap min-h-[40px] sm:min-h-[44px]">
+              <Icons.CloudUp className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /><span className="hidden sm:inline">Veri Yükle</span>
             </button>
           )}
-          <button onClick={onAddDemand} className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors uppercase font-black text-xs sm:text-sm tracking-widest shadow-md">
-            <Icons.Plus className="w-5 h-5" /><span>Yeni Talep Oluştur</span>
+          <button onClick={onOpenDrafts} className="flex items-center gap-1.5 px-2.5 py-2 sm:px-3.5 sm:py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors uppercase font-black text-[11px] sm:text-sm tracking-wide shadow-md whitespace-nowrap min-h-[40px] sm:min-h-[44px] cursor-pointer">
+            <Icons.Inbox className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span>Taslak Talepler</span>
+            {pendingDraftCount > 0 && (
+              <span className="bg-white text-amber-700 px-1.5 py-0.5 rounded-full text-[10px] font-black leading-none">{pendingDraftCount}</span>
+            )}
+          </button>
+          <button onClick={onAddDemand} className="flex items-center gap-1.5 px-2.5 py-2 sm:px-3.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors uppercase font-black text-[11px] sm:text-sm tracking-wide shadow-md whitespace-nowrap min-h-[40px] sm:min-h-[44px] cursor-pointer">
+            <Icons.Plus className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /><span>Yeni Talep Oluştur</span>
           </button>
         </div>
       </header>
     );
 
     // --- FilterControls ---
-    const FilterControls = ({ counts, activeStatus, onStatusChange, onExport }) => {
+    const FilterControls = ({ counts, activeStatus, onStatusChange, onExport, isMobileFiltersOpen, onToggleMobileFilters, hasActiveFilters }) => {
       const statusOrder = [DemandStatus.ISLEMDE, DemandStatus.TAMAMLANDI];
       const statusStyles = {
         [DemandStatus.ISLEMDE]: { active: 'bg-orange-500 text-white shadow-md', inactive: 'bg-white text-orange-600 border border-orange-200 hover:bg-orange-50' },
@@ -3257,21 +3977,34 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const statusDisplayNames = { [DemandStatus.ISLEMDE]: 'İŞLEMDEKİLER', [DemandStatus.TAMAMLANDI]: 'TAMAMLANANLAR' };
       
       return (
-        <div className="pt-2">
-          <div className="bg-white p-2 rounded-xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 border border-gray-100">
+        <div className="pt-1 sm:pt-2">
+          <div className="bg-white p-2 rounded-xl shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 border border-gray-100">
             <div className="flex-1 w-full grid grid-cols-2 gap-2">
               {statusOrder.map(status => {
                 const isActive = activeStatus === status;
                 const style = statusStyles[status];
                 return (
-                  <button key={status} onClick={() => onStatusChange(status)} className={`flex flex-col sm:flex-row items-center justify-center py-2 px-1 rounded-lg transition-all duration-200 text-xs sm:text-sm font-black uppercase tracking-widest ${isActive ? style.active : style.inactive}`}>
-                    <span>{statusDisplayNames[status]}</span>
-                    <span className={`ml-0 sm:ml-2 mt-1 sm:mt-0 px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs ${isActive ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-600'}`}>{counts[status]}</span>
+                  <button key={status} onClick={() => onStatusChange(status)} className={`flex flex-row items-center justify-center gap-1.5 py-2.5 sm:py-2 px-2 rounded-lg transition-all duration-200 text-[11px] sm:text-sm font-black uppercase tracking-wide sm:tracking-widest min-h-[44px] ${isActive ? style.active : style.inactive}`}>
+                    <span className="truncate">{statusDisplayNames[status]}</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs shrink-0 ${isActive ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-600'}`}>{counts[status]}</span>
                   </button>
                 );
               })}
             </div>
-            <button onClick={onExport} className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-200 font-black text-xs transition-colors uppercase tracking-widest">
+            {/* Mobil filtre aç/kapa ok butonu - normalde mobilde filtreler kapalı */}
+            <button
+              type="button"
+              onClick={onToggleMobileFilters}
+              className="md:hidden w-full flex items-center justify-between px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg border border-gray-200 font-black text-xs uppercase tracking-wide min-h-[44px] transition-colors"
+              aria-expanded={isMobileFiltersOpen}
+            >
+              <span className="flex items-center gap-2">
+                <Icons.Search className="w-4 h-4 text-gray-600" />
+                <span>Filtreler &amp; Arama {hasActiveFilters ? '(Aktif)' : ''}</span>
+              </span>
+              <Icons.ChevronDown className={`w-4 h-4 text-gray-700 transition-transform duration-200 ${isMobileFiltersOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <button onClick={onExport} className="hidden md:flex w-auto flex-shrink-0 items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-200 font-black text-xs transition-colors uppercase tracking-widest min-h-[40px]">
               <Icons.Download className="w-4 h-4" /><span>Excel</span>
             </button>
           </div>
@@ -3304,38 +4037,38 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       return (
         <div className="pt-2">
-          <div className="bg-white p-4 rounded-xl shadow-sm flex flex-col gap-3 border border-gray-100">
+          <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm flex flex-col gap-3 border border-gray-100">
             {/* Arama Alanı - Tam Genişlikte Üst Satır */}
             <div className="relative w-full">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none uppercase font-black"><Icons.Search className="h-5 w-5 text-gray-400" /></div>
-                <input type="search" value={internalFilters.term} onChange={handleTermChange} className="block w-full rounded-lg border border-gray-300 bg-gray-50 text-gray-900 pl-10 p-2.5 focus:border-blue-500 focus:ring-blue-500 sm:text-sm uppercase font-black tracking-widest placeholder-gray-400" placeholder="Ara (EBYS No, Başlık, Açıklama...)" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icons.Search className="h-5 w-5 text-gray-400" /></div>
+                <input type="search" value={internalFilters.term} onChange={handleTermChange} className="block w-full min-h-[44px] rounded-lg border border-gray-300 bg-gray-50 text-gray-900 pl-10 pr-3 py-2.5 focus:border-blue-500 focus:ring-blue-500 text-sm uppercase font-black tracking-wide placeholder-gray-400" placeholder="Ara (EBYS No, Başlık, Açıklama...)" />
             </div>
-            {/* Filtre ve Sıralama Seçenekleri - Alt Satır */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 w-full">
-              <select value={internalFilters.assignedTo} onChange={handleAssignedChange} className="w-full p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
+            {/* Filtre ve Sıralama Seçenekleri - Mobilde tek sütun tam genişlikte, büyük ekranda 4 sütun */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 w-full">
+              <select value={internalFilters.assignedTo} onChange={handleAssignedChange} className="w-full min-h-[44px] px-3 py-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-xs sm:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-wide">
                   <option value="all">Tüm İşi Alanlar</option>
                   {assignedNames.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
-              <select value={internalFilters.type} onChange={handleTypeChange} className="w-full p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
+              <select value={internalFilters.type} onChange={handleTypeChange} className="w-full min-h-[44px] px-3 py-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-xs sm:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-wide">
                   <option value="all">Tüm Talep Türleri</option>
                   {Object.values(DemandType).map(type => <option key={type} value={type}>{type}</option>)}
               </select>
-              <select value={internalFilters.requestingUnit} onChange={handleUnitChange} className="w-full p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-widest">
+              <select value={internalFilters.requestingUnit} onChange={handleUnitChange} className="w-full min-h-[44px] px-3 py-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-xs sm:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase font-black tracking-wide">
                   <option value="all">Tüm Birimler</option>
                   {Object.values(RequestingUnit).map(unit => <option key={unit} value={unit}>{unit}</option>)}
               </select>
               <button
                 type="button"
                 onClick={handleSortBySeqToggle}
-                className={`w-full p-2.5 rounded-lg border text-xs font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 ${internalFilters.sortBySeq ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                className={`w-full min-h-[44px] px-3 py-2.5 rounded-lg border text-xs sm:text-sm font-black uppercase tracking-wide transition-all cursor-pointer flex items-center justify-center gap-2 ${internalFilters.sortBySeq ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'}`}
               >
                 <input 
                   type="checkbox" 
                   checked={!!internalFilters.sortBySeq} 
                   readOnly 
-                  className="rounded text-blue-600 pointer-events-none" 
+                  className="rounded text-blue-600 pointer-events-none shrink-0" 
                 />
-                <span>Sıra No Göre Sırala</span>
+                <span className="truncate">Sıra No Göre Sırala</span>
               </button>
             </div>
           </div>
@@ -3374,6 +4107,17 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [isReportModalOpen, setIsReportModalOpen] = useState(false);
       const [reportStartDate, setReportStartDate] = useState('');
       const [reportEndDate, setReportEndDate] = useState('');
+
+      // Taslak Talepler State
+      const [pendingDrafts, setPendingDrafts] = useState([]);
+      const [isDraftsLoading, setIsDraftsLoading] = useState(false);
+      const [draftsError, setDraftsError] = useState(null);
+      const [draftsScriptNeedsUpdate, setDraftsScriptNeedsUpdate] = useState(false);
+      const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
+      const [draftToImport, setDraftToImport] = useState(null);
+
+      // Mobil Üst Filtre Aç/Kapa State (Normalde mobilde kapalı)
+      const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
       const fileInputRef = useRef(null);
 
@@ -3497,13 +4241,45 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       
 
 
-      const handleOpenAddModal = () => { setDemandToEdit(null); setIsModalOpen(true); };
-      const handleOpenEditModal = (demand) => { setDemandToEdit(demand); setIsModalOpen(true); };
-      const handleCloseModal = () => { setIsModalOpen(false); setDemandToEdit(null); };
+      const fetchPendingDrafts = useCallback(async (isSilent = false) => {
+        try {
+          if (!isSilent) setIsDraftsLoading(true);
+          setDraftsError(null);
+          const result = await draftApi.getPendingDrafts();
+          setPendingDrafts(result.drafts || []);
+          setDraftsScriptNeedsUpdate(!!result.scriptNeedsUpdate);
+        } catch (err) {
+          console.warn("Taslak talepler çekilemedi:", err);
+          if (!isSilent) setDraftsError(err.message || 'Taslak talepler yüklenemedi.');
+        } finally {
+          if (!isSilent) setIsDraftsLoading(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        fetchPendingDrafts(true);
+      }, [fetchPendingDrafts]);
+
+      const handleOpenDraftsModal = () => {
+        setIsDraftsModalOpen(true);
+        fetchPendingDrafts(false);
+      };
+
+      const handleTransferDraft = (draft) => {
+        setIsDraftsModalOpen(false);
+        setDemandToEdit(null);
+        setDraftToImport(draft);
+        setIsModalOpen(true);
+      };
+
+      const handleOpenAddModal = () => { setDraftToImport(null); setDemandToEdit(null); setIsModalOpen(true); };
+      const handleOpenEditModal = (demand) => { setDraftToImport(null); setDemandToEdit(demand); setIsModalOpen(true); };
+      const handleCloseModal = () => { setIsModalOpen(false); setDemandToEdit(null); setDraftToImport(null); };
 
       const handleSaveDemand = async (demandData, shouldKeepOpen = false) => {
         const originalDemands = [...demands];
         const isEditing = !!demandData.id;
+        const activeDraft = !isEditing ? draftToImport : null;
         let optimisticDemand;
         const { checklistItems, addAssignedToList, ...restOfData } = demandData;
 
@@ -3516,8 +4292,22 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           }
         } else {
           const now = new Date();
-          const progressHistory = checklistItems || [];
-          optimisticDemand = { ...restOfData, id: Date.now(), createdAt: now.toISOString(), progressHistory, attachments: [] };
+          const progressHistory = [...(checklistItems || [])];
+          if (activeDraft) {
+            progressHistory.push({
+              date: now.toISOString(),
+              description: `(SİSTEM NOTU) TASLAK_KAYNAK | TALEP_NO: ${activeDraft.talepNo || ''} | SATIR: ${activeDraft.rowIndex || ''}`,
+              isSupportNote: false
+            });
+          }
+          optimisticDemand = {
+            ...restOfData,
+            id: Date.now(),
+            createdAt: now.toISOString(),
+            progressHistory,
+            attachments: [],
+            ...(activeDraft ? { draftSource: { talepNo: activeDraft.talepNo || '', rowIndex: activeDraft.rowIndex || 0 } } : {})
+          };
         }
 
         // Persistence logic for Column M (assignedToHistory)
@@ -3537,12 +4327,29 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
         if (!shouldKeepOpen) {
             handleCloseModal();
+        } else {
+            setDraftToImport(null);
         }
         setProcessingDemands(prev => new Set(prev).add(optimisticDemand.id));
 
         try {
           await api.saveDemand(optimisticDemand);
-          showToast(isEditing ? 'Talep başarıyla güncellendi.' : 'Talep başarıyla oluşturuldu.');
+          if (activeDraft) {
+            try {
+              await draftApi.approveDraft({
+                rowIndex: activeDraft.rowIndex,
+                talepNo: activeDraft.talepNo,
+                ebysNumber: optimisticDemand.ebysNumber
+              });
+              setPendingDrafts(prev => prev.filter(item => !(item.rowIndex === activeDraft.rowIndex && item.talepNo === activeDraft.talepNo)));
+              showToast('Talep oluşturuldu ve portalda ONAYLANDI olarak güncellendi.');
+            } catch (draftErr) {
+              console.error("Taslak portal güncelleme hatası:", draftErr);
+              showToast('Talep oluşturuldu ancak Taslak Portalı güncellenemedi: ' + (draftErr.message || 'Bağlantı hatası'), 'warning');
+            }
+          } else {
+            showToast(isEditing ? 'Talep başarıyla güncellendi.' : 'Talep başarıyla oluşturuldu.');
+          }
           if (addAssignedToList && optimisticDemand.assignedTo) {
               const newNames = optimisticDemand.assignedTo.split(',').map(s => s.trim()).filter(s => s);
               setStoredAssignedNames(prev => Array.from(new Set([...prev, ...newNames])));
@@ -3649,14 +4456,33 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           }, 'Akış notları eklendi.', 'Hata oluştu.'
         );
       };
-      const handleCompleteDemand = (demandId, completionDate, completionNote) => {
-        updateDemandProgress( demandId, d => {
+      const handleCompleteDemand = async (demandId, completionDate, completionNote) => {
+        const targetDemand = demands.find(d => d.id === demandId);
+        const draftMeta = extractDraftMetaFromDemand(targetDemand);
+
+        await updateDemandProgress( demandId, d => {
             const [year, month, day] = completionDate.split('-').map(Number);
             const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
             const finalNote = completionNote.trim() || 'Akış notu düzeltilir';
             return { ...d, status: DemandStatus.TAMAMLANDI, progressHistory: [...d.progressHistory, { date: endOfDay.toISOString(), description: finalNote, isSupportNote: false, isCompletionNote: true }] };
           }, 'Talep tamamlandı.', 'Hata oluştu.'
-        ).then(() => handleCloseProgressModal());
+        );
+
+        if (draftMeta && targetDemand) {
+          try {
+            await draftApi.completeDraft({
+              ebysNumber: targetDemand.ebysNumber,
+              talepNo: draftMeta.talepNo,
+              rowIndex: draftMeta.rowIndex
+            });
+            showToast("Talep tamamlandı ve portalda 'İŞLEM TAMAMLANDI' olarak güncellendi.");
+          } catch (err) {
+            console.error("Taslak portal tamamlama hatası:", err);
+            showToast("Talep tamamlandı ancak Taslak Portalı güncellenemedi: " + (err.message || 'Bağlantı hatası'), "warning");
+          }
+        }
+
+        handleCloseProgressModal();
       };
       
       const handleEditProgressItem = (demandId, progressIndex, updatedItem, originalItem) => {
@@ -3982,22 +4808,39 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           setReportStartDate(today); setReportEndDate(today); setIsReportModalOpen(true);
       }
 
+      const currentStatusFilters = filtersByStatus[activeStatus] || {};
+      const hasActiveFilters = !!(currentStatusFilters.term || currentStatusFilters.type !== 'all' || currentStatusFilters.requestingUnit !== 'all' || currentStatusFilters.assignedTo !== 'all' || currentStatusFilters.sortBySeq);
+
       return (
         <div className="min-h-screen">
             <LoadingCurtain isLoading={loading} onTransitionEnd={() => setIsAppVisible(true)} />
             <div className={`transition-opacity duration-500 app-container-visible ${isAppVisible ? 'opacity-100' : 'opacity-0'}`}>
-                <Header onAddDemand={handleOpenAddModal} showUploadButton={demands.length === 0} onUpload={handleUploadClick} />
+                <Header onAddDemand={handleOpenAddModal} onOpenDrafts={handleOpenDraftsModal} pendingDraftCount={pendingDrafts.length} showUploadButton={demands.length === 0} onUpload={handleUploadClick} />
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xlsx, .xls" />
                 <main>
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 space-y-4 relative">
-                         <div className="sticky top-[80px] z-40 bg-brand-bg pb-4 shadow-sm -mx-4 px-4 md:px-8 md:-mx-8 pt-2">
-                             <FilterControls counts={statusCounts} activeStatus={activeStatus} onStatusChange={handleStatusChange} onExport={handleExportToExcel} />
-                             <div className="flex justify-end mt-2">
-                                 <button onClick={openReportModal} className="text-sm bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center gap-2 uppercase font-black tracking-widest">
-                                     <span>Akış Raporu İndir (Excel)</span>
-                                 </button>
+                         <div className="sticky top-[60px] sm:top-[80px] z-40 bg-brand-bg pb-3 sm:pb-4 shadow-sm -mx-4 px-4 md:px-8 md:-mx-8 pt-2">
+                             <FilterControls
+                               counts={statusCounts}
+                               activeStatus={activeStatus}
+                               onStatusChange={handleStatusChange}
+                               onExport={handleExportToExcel}
+                               isMobileFiltersOpen={isMobileFiltersOpen}
+                               onToggleMobileFilters={() => setIsMobileFiltersOpen(prev => !prev)}
+                               hasActiveFilters={hasActiveFilters}
+                             />
+                             <div className={`${isMobileFiltersOpen ? 'block' : 'hidden'} md:block`}>
+                               <div className="grid grid-cols-2 md:flex md:justify-end gap-2 mt-2">
+                                   <button onClick={handleExportToExcel} className="md:hidden text-xs bg-white text-gray-800 px-3 py-2.5 rounded-lg shadow hover:bg-gray-100 transition-colors flex items-center justify-center gap-1.5 uppercase font-black tracking-wide min-h-[44px]">
+                                       <Icons.Download className="w-4 h-4" />
+                                       <span>Excel İndir</span>
+                                   </button>
+                                   <button onClick={openReportModal} className="text-xs sm:text-sm bg-gray-700 text-white px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg shadow hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 uppercase font-black tracking-wide sm:tracking-widest min-h-[44px] md:min-h-0">
+                                       <span>Akış Raporu İndir (Excel)</span>
+                                   </button>
+                               </div>
+                               <TypeFilterControls filters={filtersByStatus[activeStatus]} onSearch={handleFilterChange} assignedNames={storedAssignedNames} />
                              </div>
-                             <TypeFilterControls filters={filtersByStatus[activeStatus]} onSearch={handleFilterChange} assignedNames={storedAssignedNames} />
                          </div>
                          {error && <div className="text-center p-10 text-lg font-semibold text-red-600 bg-red-50 m-8 rounded-lg border border-red-200 uppercase font-black tracking-widest">Hata: {error}</div>}
                          {!error && (
@@ -4005,8 +4848,18 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                          )}
                     </div>
                 </main>
-                <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} storedAssignedNames={storedAssignedNames} />
-                <DemandProgressModal isOpen={isProgressModalOpen} onClose={handleCloseProgressModal} demand={selectedDemandForProgress} currentTime={currentTime} onAddProgressItems={handleAddProgressItems} onEditDemand={handleUpdateDemandFromModal} onCompleteDemand={handleCompleteDemand} onEditProgressItem={handleEditProgressItem} onRequestDeleteProgressItem={requestProgressItemDeletion} onOpenEditModal={handleRequestEditFromProgress} />
+                <TaslakTaleplerModal
+                  isOpen={isDraftsModalOpen}
+                  onClose={() => setIsDraftsModalOpen(false)}
+                  drafts={pendingDrafts}
+                  isLoading={isDraftsLoading}
+                  error={draftsError}
+                  scriptNeedsUpdate={draftsScriptNeedsUpdate}
+                  onRefresh={() => fetchPendingDrafts(false)}
+                  onTransferDraft={handleTransferDraft}
+                />
+                <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} draftToImport={draftToImport} storedAssignedNames={storedAssignedNames} />
+                <DemandProgressModal isOpen={isProgressModalOpen} onClose={handleCloseProgressModal} demand={selectedDemandForProgress} currentTime={currentTime} onAddProgressItems={handleAddProgressItems} onEditDemand={handleUpdateDemandFromModal} onCompleteDemand={handleCompleteDemand} onEditProgressItem={handleEditProgressItem} onRequestDeleteProgressItem={requestProgressItemDeletion} onOpenEditModal={handleRequestEditFromProgress} onNotify={showToast} />
                 <ConfirmationModal isOpen={!!deletionTarget} onClose={handleCancelDeletion} onConfirm={handleConfirmDeletion} title="Silme Onayı" message={deletionTarget?.type === 'demand' ? "Bu talebi silmek istediğinizden emin misiniz?" : "Bu akış notunu silmek istediğinizden emin misiniz?"} />
                 {isReportModalOpen && (
                     <div className="fixed inset-0 bg-black/60 z-[60] flex justify-center items-center p-4 backdrop-blur-sm" onClick={() => setIsReportModalOpen(false)}>
