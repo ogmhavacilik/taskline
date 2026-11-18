@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbzzJzpKxhfUzO7QEoWWA-uR8Q896TFVCcPVgi6RQvjA4sP55OXF6NHJetLbPxK2_vEY/exec" />
+  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbxn6uR6kpUXuREeFl7jM3G8sI5Q5PTtNLjtyRkPzYPDg5LOkhzsCT4glzFGXUA9gekW/exec" />
   <meta name="excel-script-url" content="https://script.google.com/macros/s/AKfycbys4kKFJI87wbn155z6jphH7D5qgC45FWUvzzxi9n4-YfYDdRxY72fMWTaTGMxvkXqN-g/exec" />
   <meta name="draft-script-url" content="https://script.google.com/macros/s/AKfycbxk1H3J_nJ7TaG3UNXq6IqWZy1NKwqSzKjKHPId9h9o5656c9ziUi-T90K27DPD7zTB/exec" />
   <title>Task Line</title>
@@ -230,8 +230,11 @@
     }
 
     const isDraftPendingStatus = (durum) => {
-      const norm = normalizeTrText(durum).replace(/İ/g, 'I').replace(/I/g, 'I');
-      return norm === 'ONAY BEKLIYOR' || normalizeTrText(durum) === 'ONAY BEKLİYOR';
+      return foldTrForCheck(durum) === 'ONAY BEKLIYOR';
+    };
+
+    const isDraftOutOfTrackingStatus = (durum) => {
+      return foldTrForCheck(durum) === 'TASKLINE TAKIP DISI';
     };
 
     let resolvedDraftScriptUrl = '';
@@ -244,16 +247,18 @@
         if (candidateUrls.length === 0) throw new Error("Taslak Portal URL bulunamadı");
 
         const parseDraftResponse = (json) => {
-          if (!json) return { list: null, needsUpdate: true };
+          if (!json) return { list: null, outOfTrackingList: null, needsUpdate: true };
           if (json.status === 'error') throw new Error(json.message || 'Taslak verisi alınamadı');
           const rawList = Array.isArray(json.data) ? json.data : (Array.isArray(json.drafts) ? json.drafts : (Array.isArray(json) ? json : null));
           if (!rawList) {
-            return { list: null, needsUpdate: true, rawMessage: json.message || '' };
+            return { list: null, outOfTrackingList: null, needsUpdate: true, rawMessage: json.message || '' };
           }
-          const normalized = rawList
+          const validRows = rawList
             .map((r, i) => normalizeDraftRow(r, i))
-            .filter(r => r && (r.talepNo || r.formBasligi || r.malzemeOzet) && (!r.durum || isDraftPendingStatus(r.durum)));
-          return { list: normalized, needsUpdate: false };
+            .filter(r => r && (r.talepNo || r.formBasligi || r.malzemeOzet));
+          const pendingList = validRows.filter(r => !r.durum || isDraftPendingStatus(r.durum));
+          const outOfTrackingList = validRows.filter(r => r.durum && isDraftOutOfTrackingStatus(r.durum));
+          return { list: pendingList, outOfTrackingList, needsUpdate: false };
         };
 
         const tryUrl = async (baseUrl) => {
@@ -273,7 +278,7 @@
                 const getJson = JSON.parse(text);
                 const parsedGet = parseDraftResponse(getJson);
                 if (!parsedGet.needsUpdate) {
-                  return { drafts: parsedGet.list, scriptNeedsUpdate: false };
+                  return { drafts: parsedGet.list, outOfTrackingDrafts: parsedGet.outOfTrackingList || [], scriptNeedsUpdate: false };
                 }
               }
             }
@@ -294,9 +299,9 @@
           const postJson = await postRes.json();
           const parsedPost = parseDraftResponse(postJson);
           if (!parsedPost.needsUpdate) {
-            return { drafts: parsedPost.list, scriptNeedsUpdate: false };
+            return { drafts: parsedPost.list, outOfTrackingDrafts: parsedPost.outOfTrackingList || [], scriptNeedsUpdate: false };
           }
-          return { drafts: [], scriptNeedsUpdate: true };
+          return { drafts: [], outOfTrackingDrafts: [], scriptNeedsUpdate: true };
         };
 
         let lastError = null;
@@ -313,7 +318,7 @@
         }
 
         if (lastError && candidateUrls.length === 1) throw lastError;
-        return { drafts: [], scriptNeedsUpdate: true };
+        return { drafts: [], outOfTrackingDrafts: [], scriptNeedsUpdate: true };
       },
 
       approveDraft: async ({ rowIndex, talepNo, ebysNumber }) => {
@@ -373,6 +378,46 @@
         if (!res.ok) throw new Error(`Taslak Portal hatası: ${res.status}`);
         const json = await res.json();
         if (json.status === 'error') throw new Error(json.message || 'Taslak reddedilemedi');
+        return json;
+      },
+
+      markOutOfTracking: async ({ rowIndex, talepNo }) => {
+        const baseUrl = resolvedDraftScriptUrl || getDraftScriptUrl() || getScriptUrl();
+        if (!baseUrl) throw new Error("Taslak Portal URL bulunamadı");
+        const res = await fetch(baseUrl, {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'markOutOfTracking',
+            payload: { rowIndex, talepNo, status: 'TASKLINE TAKİP DIŞI' }
+          }),
+          redirect: 'follow'
+        });
+        if (!res.ok) throw new Error(`Taslak Portal hatası: ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message || 'Durum TASKLINE TAKİP DIŞI olarak güncellenemedi');
+        return json;
+      },
+
+      updateOutOfTrackingEbys: async ({ rowIndex, talepNo, ebysNumber }) => {
+        const baseUrl = resolvedDraftScriptUrl || getDraftScriptUrl() || getScriptUrl();
+        if (!baseUrl) throw new Error("Taslak Portal URL bulunamadı");
+        const res = await fetch(baseUrl, {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'updateOutOfTrackingEbys',
+            payload: { rowIndex, talepNo, ebysNumber, status: 'TASKLINE TAKİP DIŞI' }
+          }),
+          redirect: 'follow'
+        });
+        if (!res.ok) throw new Error(`Taslak Portal hatası: ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message || 'EBYS numarası güncellenemedi');
         return json;
       }
     };
@@ -3808,15 +3853,33 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
     };
 
     // --- TaslakTaleplerModal (Onay Bekleyen Talepler Portalı) ---
-    const TaslakTaleplerModal = ({ isOpen, onClose, drafts, isLoading, error, scriptNeedsUpdate, onRefresh, onTransferDraft, onRejectDraft }) => {
+    const TaslakTaleplerModal = ({ isOpen, onClose, drafts, outOfTrackingDrafts = [], isLoading, error, scriptNeedsUpdate, onRefresh, onTransferDraft, onRejectDraft, onMarkOutOfTracking, onUpdateOutOfTrackingEbys }) => {
       const [searchTerm, setSearchTerm] = useState('');
+      const [showOutOfTrackingOnly, setShowOutOfTrackingOnly] = useState(false);
       const [docGuideDraft, setDocGuideDraft] = useState(null);
       const [rejectConfirmDraft, setRejectConfirmDraft] = useState(null);
       const [isRejecting, setIsRejecting] = useState(false);
+      const [markingOutDraftKey, setMarkingOutDraftKey] = useState(null);
+      const [ebysModalDraft, setEbysModalDraft] = useState(null);
+      const [ebysInput, setEbysInput] = useState('');
+      const [ebysError, setEbysError] = useState('');
+      const [isUpdatingEbys, setIsUpdatingEbys] = useState(false);
+
+      useEffect(() => {
+        if (!isOpen) {
+          setShowOutOfTrackingOnly(false);
+          setEbysModalDraft(null);
+          setEbysInput('');
+          setEbysError('');
+          setRejectConfirmDraft(null);
+        }
+      }, [isOpen]);
 
       if (!isOpen) return null;
 
-      const filteredDrafts = (drafts || []).filter(d => {
+      const activeSourceList = showOutOfTrackingOnly ? (outOfTrackingDrafts || []) : (drafts || []);
+
+      const filteredDrafts = activeSourceList.filter(d => {
         const q = searchTerm.trim().toLocaleLowerCase('tr-TR');
         if (!q) return true;
         return (
@@ -3843,6 +3906,43 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         }
       };
 
+      const handleMarkOutClick = async (draft, draftKey) => {
+        if (!onMarkOutOfTracking) return;
+        setMarkingOutDraftKey(draftKey);
+        try {
+          await onMarkOutOfTracking(draft);
+        } finally {
+          setMarkingOutDraftKey(null);
+        }
+      };
+
+      const handleOpenEbysModal = (draft) => {
+        setEbysModalDraft(draft);
+        setEbysInput('');
+        setEbysError('');
+      };
+
+      const handleSubmitEbysUpdate = async (e) => {
+        if (e) e.preventDefault();
+        const trimmed = String(ebysInput || '').trim();
+        if (!trimmed) {
+          setEbysError('Lütfen EBYS numarasını giriniz.');
+          return;
+        }
+        if (!ebysModalDraft || !onUpdateOutOfTrackingEbys) return;
+        setEbysError('');
+        setIsUpdatingEbys(true);
+        try {
+          await onUpdateOutOfTrackingEbys(ebysModalDraft, trimmed);
+          setEbysModalDraft(null);
+          setEbysInput('');
+        } catch (err) {
+          setEbysError((err && err.message) || 'EBYS numarası kaydedilemedi.');
+        } finally {
+          setIsUpdatingEbys(false);
+        }
+      };
+
       return (
         <React.Fragment>
         <div className="fixed inset-0 bg-black/60 z-[65] backdrop-blur-sm flex justify-center items-center p-0 sm:p-4 overflow-hidden" onClick={onClose}>
@@ -3854,7 +3954,9 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                   <h2 className="text-base sm:text-xl font-black text-gray-900 uppercase tracking-wider truncate">Taslak Talepler (Onay Bekleyenler)</h2>
                 </div>
                 <p className="text-[11px] sm:text-xs text-gray-600 font-bold mt-0.5 uppercase tracking-wide">
-                  &quot;ONAY BEKLİYOR&quot; durumundaki talepleri Task Line şablonuna aktarabilirsiniz.
+                  {showOutOfTrackingOnly
+                    ? '"TASKLINE TAKİP DIŞI" durumundaki işler listelenmektedir. EBYS No girerek portalda Tamamlanan Talepler sayfasına aktarabilirsiniz.'
+                    : '"ONAY BEKLİYOR" durumundaki talepleri Task Line şablonuna aktarabilirsiniz.'}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -3880,17 +3982,49 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             </div>
 
             <div className="p-3 sm:p-4 border-b border-gray-100 bg-white flex-shrink-0">
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Icons.Search className="w-4 h-4 text-gray-400" />
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <div className="relative flex-1 min-w-0">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Icons.Search className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Taslaklarda ara (Talep No, Kuyruk No, Malzeme, Personel...)"
+                    className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide focus:ring-amber-500 focus:border-amber-500 min-h-[44px]"
+                  />
                 </div>
-                <input
-                  type="search"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Taslaklarda ara (Talep No, Kuyruk No, Malzeme, Personel...)"
-                  className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide focus:ring-amber-500 focus:border-amber-500"
-                />
+                <button
+                  type="button"
+                  onClick={() => setShowOutOfTrackingOnly(prev => !prev)}
+                  aria-pressed={showOutOfTrackingOnly}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-lg border text-xs font-black uppercase tracking-wider transition-all min-h-[44px] shrink-0 cursor-pointer select-none ${
+                    showOutOfTrackingOnly
+                      ? 'bg-purple-700 text-white border-purple-700 shadow-md'
+                      : 'bg-gray-50 hover:bg-purple-50 text-gray-800 border-gray-300 hover:border-purple-400'
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded flex items-center justify-center border ${
+                    showOutOfTrackingOnly
+                      ? 'bg-white text-purple-700 border-white'
+                      : 'bg-white text-transparent border-gray-400'
+                  }`}>
+                    {showOutOfTrackingOnly && (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </span>
+                  <span>TAKİP DIŞI GÖSTER</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black leading-none ${
+                    showOutOfTrackingOnly
+                      ? 'bg-white/25 text-white'
+                      : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {outOfTrackingDrafts.length}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -3927,17 +4061,24 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                 </div>
               ) : filteredDrafts.length === 0 ? (
                 <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-10 text-center text-gray-500 font-black text-xs sm:text-sm uppercase tracking-wider">
-                  Onay bekleyen taslak talep bulunmuyor.
+                  {showOutOfTrackingOnly
+                    ? 'Taskline takip dışı bırakılmış talep bulunmuyor.'
+                    : 'Onay bekleyen taslak talep bulunmuyor.'}
                 </div>
               ) : (
                 filteredDrafts.map((draft, idx) => {
                   const signedDocAvailable = hasSignedDocument(draft);
+                  const draftKey = `${draft.talepNo || idx}-${draft.rowIndex}`;
+                  const isMarkingOut = markingOutDraftKey === draftKey;
+                  const isOutOfTrackingCard = showOutOfTrackingOnly || isDraftOutOfTrackingStatus(draft.durum);
                   return (
-                  <div key={`${draft.talepNo || idx}-${draft.rowIndex}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div key={draftKey} className={`bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${isOutOfTrackingCard ? 'border-purple-200' : 'border-gray-200'}`}>
                     <div className="space-y-2 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="bg-gray-900 text-white px-2 py-0.5 rounded font-mono font-bold">{draft.talepNo || `SATIR ${draft.rowIndex}`}</span>
-                        <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded font-black uppercase tracking-wide">{draft.durum || 'ONAY BEKLİYOR'}</span>
+                        <span className={`px-2.5 py-0.5 rounded font-black uppercase tracking-wide ${isOutOfTrackingCard ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-amber-100 text-amber-800'}`}>
+                          {draft.durum || (isOutOfTrackingCard ? 'TASKLINE TAKİP DIŞI' : 'ONAY BEKLİYOR')}
+                        </span>
                         {draft.birim && <span className="bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded font-black uppercase">{draft.birim}</span>}
                         {signedDocAvailable && (
                           <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded font-black uppercase tracking-wide inline-flex items-center gap-1">
@@ -3986,22 +4127,44 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                           </span>
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => onTransferDraft(draft)}
-                        className="w-full lg:w-auto min-h-[44px] px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span>Task Line Aktar</span>
-                        <Icons.ArrowRight className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRejectConfirmDraft(draft)}
-                        className="w-full lg:w-auto min-h-[44px] px-4 py-2.5 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white border border-red-200 hover:border-red-600 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <Icons.Trash className="w-4 h-4 shrink-0" />
-                        <span>Taslağı Sil</span>
-                      </button>
+                      {showOutOfTrackingOnly ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEbysModal(draft)}
+                          className="w-full lg:w-auto min-h-[44px] px-5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <Icons.Edit className="w-4 h-4 shrink-0" />
+                          <span>EBYS NO GÜNCELLE</span>
+                        </button>
+                      ) : (
+                        <React.Fragment>
+                          <button
+                            type="button"
+                            onClick={() => onTransferDraft(draft)}
+                            className="w-full lg:w-auto min-h-[44px] px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <span>Task Line Aktar</span>
+                            <Icons.ArrowRight className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isMarkingOut}
+                            onClick={() => handleMarkOutClick(draft, draftKey)}
+                            className="w-full lg:w-auto min-h-[44px] px-4 py-2.5 bg-purple-50 hover:bg-purple-700 text-purple-800 hover:text-white border border-purple-300 hover:border-purple-700 disabled:opacity-60 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Icons.Clock className={`w-4 h-4 shrink-0 ${isMarkingOut ? 'animate-spin' : ''}`} />
+                            <span>{isMarkingOut ? 'İşleniyor...' : 'TASKLINE TAKİP DIŞI'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRejectConfirmDraft(draft)}
+                            className="w-full lg:w-auto min-h-[44px] px-4 py-2.5 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white border border-red-200 hover:border-red-600 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Icons.Trash className="w-4 h-4 shrink-0" />
+                            <span>Taslağı Sil</span>
+                          </button>
+                        </React.Fragment>
+                      )}
                     </div>
                   </div>
                   );
@@ -4010,6 +4173,68 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             </div>
           </div>
         </div>
+
+        {ebysModalDraft && (
+          <div className="fixed inset-0 bg-black/70 z-[85] backdrop-blur-sm flex justify-center items-center p-4" onClick={() => !isUpdatingEbys && setEbysModalDraft(null)}>
+            <form onSubmit={handleSubmitEbysUpdate} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 sm:p-6 text-gray-900 space-y-4 border border-purple-200" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-purple-800">
+                  <Icons.Edit className="w-6 h-6 shrink-0" />
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight">EBYS No Güncelle</h3>
+                </div>
+                <button
+                  type="button"
+                  disabled={isUpdatingEbys}
+                  onClick={() => setEbysModalDraft(null)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <Icons.X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-3.5 text-xs text-purple-950 space-y-1.5">
+                <div className="font-black uppercase">
+                  {ebysModalDraft.talepNo ? `#${ebysModalDraft.talepNo} — ` : ''}{ebysModalDraft.malzemeOzet || ebysModalDraft.formBasligi}
+                </div>
+                <p className="font-bold leading-relaxed">
+                  Girdiğiniz EBYS numarası portalda <b>Tamamlanan Talepler</b> sayfasına <b>&quot;TASKLINE TAKİP DIŞI&quot;</b> olarak yazılacak ve bu iş <b>Onay Bekleyen Talepler</b> listesinden kaldırılacaktır.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider">EBYS Numarası</label>
+                <input
+                  type="text"
+                  autoFocus
+                  disabled={isUpdatingEbys}
+                  value={ebysInput}
+                  onChange={(e) => { setEbysInput(e.target.value); if (ebysError) setEbysError(''); }}
+                  placeholder="Örn: 2026-12345 veya E-66040928..."
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border-2 border-purple-300 rounded-xl text-sm font-black text-gray-900 focus:outline-none focus:border-purple-600"
+                />
+                {ebysError && (
+                  <p className="text-xs font-black text-red-600">{ebysError}</p>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={isUpdatingEbys}
+                  onClick={() => setEbysModalDraft(null)}
+                  className="min-h-[42px] px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingEbys}
+                  className="min-h-[42px] px-5 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-60 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  <Icons.CheckCircle className="w-4 h-4" />
+                  <span>{isUpdatingEbys ? 'Kaydediliyor...' : 'EBYS No Kaydet'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {rejectConfirmDraft && (
           <div className="fixed inset-0 bg-black/70 z-[85] backdrop-blur-sm flex justify-center items-center p-4" onClick={() => !isRejecting && setRejectConfirmDraft(null)}>
@@ -4238,6 +4463,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       // Taslak Talepler State
       const [pendingDrafts, setPendingDrafts] = useState([]);
+      const [outOfTrackingDrafts, setOutOfTrackingDrafts] = useState([]);
       const [isDraftsLoading, setIsDraftsLoading] = useState(false);
       const [draftsError, setDraftsError] = useState(null);
       const [draftsScriptNeedsUpdate, setDraftsScriptNeedsUpdate] = useState(false);
@@ -4375,6 +4601,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           setDraftsError(null);
           const result = await draftApi.getPendingDrafts();
           setPendingDrafts(result.drafts || []);
+          setOutOfTrackingDrafts(result.outOfTrackingDrafts || []);
           setDraftsScriptNeedsUpdate(!!result.scriptNeedsUpdate);
         } catch (err) {
           console.warn("Taslak talepler çekilemedi:", err);
@@ -4411,6 +4638,37 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         } catch (err) {
           console.error("Taslak reddetme hatası:", err);
           showToast("Taslak reddedilemedi: " + (err.message || "Bağlantı hatası"), "error");
+        }
+      };
+
+      const handleMarkOutOfTracking = async (draft) => {
+        try {
+          await draftApi.markOutOfTracking({
+            rowIndex: draft.rowIndex,
+            talepNo: draft.talepNo
+          });
+          setPendingDrafts(prev => prev.filter(item => !(item.rowIndex === draft.rowIndex && item.talepNo === draft.talepNo)));
+          setOutOfTrackingDrafts(prev => [{ ...draft, durum: 'TASKLINE TAKİP DIŞI' }, ...prev.filter(item => !(item.rowIndex === draft.rowIndex && item.talepNo === draft.talepNo))]);
+          showToast("Taslak 'TASKLINE TAKİP DIŞI' olarak işaretlendi.");
+        } catch (err) {
+          console.error("Takip dışı işaretleme hatası:", err);
+          showToast("Takip dışı işaretlenemedi: " + (err.message || "Bağlantı hatası"), "error");
+        }
+      };
+
+      const handleUpdateOutOfTrackingEbys = async (draft, ebysNumber) => {
+        try {
+          await draftApi.updateOutOfTrackingEbys({
+            rowIndex: draft.rowIndex,
+            talepNo: draft.talepNo,
+            ebysNumber
+          });
+          setOutOfTrackingDrafts(prev => prev.filter(item => !(item.rowIndex === draft.rowIndex && item.talepNo === draft.talepNo)));
+          showToast(`EBYS No (${ebysNumber}) portalda 'Tamamlanan Talepler' sayfasına yazıldı ve onay bekleyen işlerden kaldırıldı.`);
+        } catch (err) {
+          console.error("Takip dışı EBYS güncelleme hatası:", err);
+          showToast("EBYS No güncellenemedi: " + (err.message || "Bağlantı hatası"), "error");
+          throw err;
         }
       };
 
@@ -4994,12 +5252,15 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                   isOpen={isDraftsModalOpen}
                   onClose={() => setIsDraftsModalOpen(false)}
                   drafts={pendingDrafts}
+                  outOfTrackingDrafts={outOfTrackingDrafts}
                   isLoading={isDraftsLoading}
                   error={draftsError}
                   scriptNeedsUpdate={draftsScriptNeedsUpdate}
                   onRefresh={() => fetchPendingDrafts(false)}
                   onTransferDraft={handleTransferDraft}
                   onRejectDraft={handleRejectDraft}
+                  onMarkOutOfTracking={handleMarkOutOfTracking}
+                  onUpdateOutOfTrackingEbys={handleUpdateOutOfTrackingEbys}
                 />
                 <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} draftToImport={draftToImport} storedAssignedNames={storedAssignedNames} />
                 <DemandProgressModal isOpen={isProgressModalOpen} onClose={handleCloseProgressModal} demand={selectedDemandForProgress} currentTime={currentTime} onAddProgressItems={handleAddProgressItems} onEditDemand={handleUpdateDemandFromModal} onCompleteDemand={handleCompleteDemand} onEditProgressItem={handleEditProgressItem} onRequestDeleteProgressItem={requestProgressItemDeletion} onOpenEditModal={handleRequestEditFromProgress} onNotify={showToast} />
