@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbxn6uR6kpUXuREeFl7jM3G8sI5Q5PTtNLjtyRkPzYPDg5LOkhzsCT4glzFGXUA9gekW/exec" />
+  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbzS1N1VPxG9fdon-4AxOEyAwd999s2_qf9ZfjqPdSdmG29aNnSD0FygizNuvReMfZrf/exec" />
   <meta name="excel-script-url" content="https://script.google.com/macros/s/AKfycbys4kKFJI87wbn155z6jphH7D5qgC45FWUvzzxi9n4-YfYDdRxY72fMWTaTGMxvkXqN-g/exec" />
   <meta name="draft-script-url" content="https://script.google.com/macros/s/AKfycbxk1H3J_nJ7TaG3UNXq6IqWZy1NKwqSzKjKHPId9h9o5656c9ziUi-T90K27DPD7zTB/exec" />
   <title>Task Line</title>
@@ -331,7 +331,7 @@
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             action: 'approveDraft',
-            payload: { rowIndex, talepNo, ebysNumber, status: 'ONAYLANDI' }
+            payload: { rowIndex, talepNo, ebysNumber, status: 'ONAYLANDI(TASKLINE TAKİBİ BAŞLADI)' }
           }),
           redirect: 'follow'
         });
@@ -442,20 +442,33 @@
     };
 
     const parseDraftDateToISOInput = (dateStr) => {
-      if (!dateStr) return new Date().toISOString().split('T')[0];
+      const todayISO = () => new Date().toISOString().split('T')[0];
+      if (!dateStr) return todayISO();
       const cleaned = String(dateStr).trim();
-      const ddmmyyyy = cleaned.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
-      if (ddmmyyyy) {
-        const d = ddmmyyyy[1].padStart(2, '0');
-        const m = ddmmyyyy[2].padStart(2, '0');
-        const y = ddmmyyyy[3];
-        return `${y}-${m}-${d}`;
-      }
       const yyyymmdd = cleaned.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
       if (yyyymmdd) {
-        return `${yyyymmdd[1]}-${yyyymmdd[2].padStart(2, '0')}-${yyyymmdd[3].padStart(2, '0')}`;
+        const y = parseInt(yyyymmdd[1], 10);
+        const m = parseInt(yyyymmdd[2], 10);
+        const d = parseInt(yyyymmdd[3], 10);
+        if (y >= 1900 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
       }
-      return new Date().toISOString().split('T')[0];
+      const ddmmyyyy = cleaned.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+      if (ddmmyyyy) {
+        let d = parseInt(ddmmyyyy[1], 10);
+        let m = parseInt(ddmmyyyy[2], 10);
+        const y = parseInt(ddmmyyyy[3], 10);
+        if (m > 12 && d <= 12) {
+          const tmp = d;
+          d = m;
+          m = tmp;
+        }
+        if (y >= 1900 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+      }
+      return todayISO();
     };
 
     const callApi = async (action, payload, isExcel = false) => {
@@ -2772,8 +2785,15 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
       const [checklistHeaders, setChecklistHeaders] = useState([]);
       const [checklistMap, setChecklistMap] = useState({ name: '', pn: '', sn: '', qty: '' });
       const [showSignedDocGuide, setShowSignedDocGuide] = useState(false);
+      const [submitError, setSubmitError] = useState('');
+      const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+      const prevIsOpenRef = useRef(false);
 
       useEffect(() => {
+        const justOpened = isOpen && !prevIsOpenRef.current;
+        prevIsOpenRef.current = isOpen;
+        if (!isOpen) return;
+        if (!justOpened && !demandToEdit && !draftToImport) return;
         if (demandToEdit) {
           let dateStr = '';
           if (demandToEdit.ebysDate && demandToEdit.ebysDate !== 'N/A') {
@@ -2860,7 +2880,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           setChecklistInput('');
           setProcessedChecklist([]);
           setManualChecklistItems([{ name: '', partNo: '', serialNo: '', requested: 0 }]);
-          setTransferToMaterialList(true);
+          setTransferToMaterialList(false);
           setShowMaterialTable(false);
           setMaterialTableMode('selection');
         } else {
@@ -2875,6 +2895,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         setChecklistWorkbook(null);
         setChecklistActiveSheet('');
         setShowSignedDocGuide(false);
+        setSubmitError('');
+        setConfirmSaveOpen(false);
       }, [demandToEdit, draftToImport, isOpen]);
       
       const handleTitleChange = (e) => {
@@ -3222,32 +3244,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         setChecklistInput('');
       };
 
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!formData.title.trim()) {
-            alert('Lütfen Talep Başlığı giriniz.');
-            return;
-        }
-        if (!formData.ebysNumber.trim()) {
-            alert('Lütfen EBYS Numarası giriniz.');
-            return;
-        }
-        if (!formData.ebysDate) {
-            alert('Lütfen EBYS Tarihi seçiniz.');
-            return;
-        }
-        if (formData.requestingUnits.length === 0) {
-            alert('Lütfen en az bir talep eden birim seçin.');
-            return;
-        }
-
-        if (checklistInput.trim() && processedChecklist.length === 0) {
-          return alert("Lütfen yapıştırılan veriyi AKTAR butonuna basarak checklist'e dönüştürün.");
-        }
-
-        const confirmMsg = demandToEdit ? "Talep değişikliklerini kaydetmek istediğinizden emin misiniz?" : "Yeni talebi kaydetmek istediğinizden emin misiniz?";
-        if (!window.confirm(confirmMsg)) return;
-
+      const executeSave = () => {
         let finalChecklistItems = [...processedChecklist];
         manualChecklistItems.forEach(item => {
             if (item.name.trim()) {
@@ -3261,6 +3258,9 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             isKalanIsler: true
         }));
 
+        setConfirmSaveOpen(false);
+        setSubmitError('');
+
         onSave({ 
             ...(demandToEdit && { id: demandToEdit.id }), 
             ...formData, 
@@ -3273,6 +3273,34 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             setShowMaterialTable(true);
         }
       };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        setSubmitError('');
+        if (!formData.title.trim()) {
+            setSubmitError('Lütfen Talep Başlığı giriniz.');
+            return;
+        }
+        if (!formData.ebysNumber.trim()) {
+            setSubmitError('Lütfen EBYS Numarası giriniz.');
+            return;
+        }
+        if (!formData.ebysDate) {
+            setSubmitError('Lütfen EBYS Tarihi seçiniz.');
+            return;
+        }
+        if (formData.requestingUnits.length === 0) {
+            setSubmitError('Lütfen en az bir talep eden birim seçin.');
+            return;
+        }
+
+        if (checklistInput.trim() && processedChecklist.length === 0) {
+          setSubmitError("Lütfen yapıştırılan veriyi AKTAR butonuna basarak checklist'e dönüştürün.");
+          return;
+        }
+
+        setConfirmSaveOpen(true);
+      };
       
       if (!isOpen) return null;
 
@@ -3284,7 +3312,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                 <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400"><Icons.X className="w-6 h-6 text-gray-600"/></button>
             </div>
             {showMaterialTable ? renderMaterialTableContent() : (
-            <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6 max-h-[82vh] overflow-y-auto pr-1 sm:pr-2">
+            <form onSubmit={handleSubmit} noValidate className="space-y-5 sm:space-y-6 max-h-[82vh] overflow-y-auto pr-1 sm:pr-2">
                 {draftToImport && !demandToEdit && (
                   <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 sm:p-4 text-xs text-amber-900 space-y-2">
                     <div className="font-black uppercase tracking-wider flex flex-wrap items-center gap-2">
@@ -3292,7 +3320,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                       {draftToImport.talepNo && <span className="bg-amber-200 px-2 py-0.5 rounded font-mono">#{draftToImport.talepNo}</span>}
                       {draftToImport.talepEden && <span>· {draftToImport.talepEden}</span>}
                     </div>
-                    <p className="font-bold">Lütfen EBYS Numarasını girip Kaydet butonuna basınız. Kayıt tamamlandığında portalda A sütununa EBYS numarası ve Durum sütununa &quot;ONAYLANDI&quot; yazılacaktır.</p>
+                    <p className="font-bold">Lütfen EBYS Numarasını girip Kaydet butonuna basınız. Kayıt tamamlandığında portalda A sütununa EBYS numarası ve Durum sütununa &quot;ONAYLANDI(TASKLINE TAKİBİ BAŞLADI)&quot; yazılacaktır.</p>
                     {hasSignedDocument(draftToImport) && (
                       <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-emerald-900">
                         <div className="space-y-0.5">
@@ -3502,6 +3530,12 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                         </div>
                     </div>
                 </div>
+                {submitError && (
+                  <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-3 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wide flex items-center gap-2">
+                    <Icons.ExclamationTriangle className="w-5 h-5 shrink-0 text-red-600" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
                 <div className="flex justify-end items-center gap-4 pt-8 border-t">
                     {!demandToEdit && (
                         <label className="flex items-center gap-2 text-xs font-black text-blue-700 uppercase cursor-pointer select-none mr-auto">
@@ -3520,6 +3554,39 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             </form>
             )}
           </div>
+          {confirmSaveOpen && (
+            <div className="fixed inset-0 bg-black/65 z-[75] backdrop-blur-sm flex justify-center items-center p-4" onClick={() => setConfirmSaveOpen(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 sm:p-6 text-gray-900 space-y-4 border border-blue-200 font-sans" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-2.5 text-blue-700">
+                  <Icons.CheckCircle className="w-6 h-6 shrink-0" />
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight">Kayıt Onayı</h3>
+                </div>
+                <p className="text-xs sm:text-sm font-bold text-gray-700 leading-relaxed">
+                  {demandToEdit
+                    ? "Talep değişikliklerini kaydetmek istediğinizden emin misiniz?"
+                    : draftToImport
+                      ? `EBYS No "${formData.ebysNumber}" ile yeni talebi kaydedip portalda "ONAYLANDI(TASKLINE TAKİBİ BAŞLADI)" olarak güncellemek istiyor musunuz?`
+                      : "Yeni talebi kaydetmek istediğinizden emin misiniz?"}
+                </p>
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSaveOpen(false)}
+                    className="min-h-[42px] px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    onClick={executeSave}
+                    className="min-h-[42px] px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md cursor-pointer"
+                  >
+                    Evet, Kaydet
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <SuccessOverlay 
               isOpen={showUploadSuccess} 
               onClose={() => setShowUploadSuccess(false)} 
@@ -4742,7 +4809,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                 ebysNumber: optimisticDemand.ebysNumber
               });
               setPendingDrafts(prev => prev.filter(item => !(item.rowIndex === activeDraft.rowIndex && item.talepNo === activeDraft.talepNo)));
-              showToast('Talep oluşturuldu ve portalda ONAYLANDI olarak güncellendi.');
+              showToast('Talep oluşturuldu ve portalda ONAYLANDI(TASKLINE TAKİBİ BAŞLADI) olarak güncellendi.');
             } catch (draftErr) {
               console.error("Taslak portal güncelleme hatası:", draftErr);
               showToast('Talep oluşturuldu ancak Taslak Portalı güncellenemedi: ' + (draftErr.message || 'Bağlantı hatası'), 'warning');
