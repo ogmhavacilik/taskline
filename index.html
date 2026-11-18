@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbwhbIHtxu1jVpjQg9nn4v_wZO9q-_ibIqyLwgF8B3l5ko4gZYwL5WlEwJmiT4_swbU/exec" />
+  <meta name="google-script-url" content="https://script.google.com/macros/s/AKfycbzzJzpKxhfUzO7QEoWWA-uR8Q896TFVCcPVgi6RQvjA4sP55OXF6NHJetLbPxK2_vEY/exec" />
   <meta name="excel-script-url" content="https://script.google.com/macros/s/AKfycbys4kKFJI87wbn155z6jphH7D5qgC45FWUvzzxi9n4-YfYDdRxY72fMWTaTGMxvkXqN-g/exec" />
   <meta name="draft-script-url" content="https://script.google.com/macros/s/AKfycbxk1H3J_nJ7TaG3UNXq6IqWZy1NKwqSzKjKHPId9h9o5656c9ziUi-T90K27DPD7zTB/exec" />
   <title>Task Line</title>
@@ -185,6 +185,7 @@
         talepEden: getField('talepEden', 'TALEP EDEN PERSONEL', 'talep_eden'),
         tarih: getField('tarih', 'TARİH', 'date'),
         durum: getField('durum', 'DURUM', 'status'),
+        islakImzaliBelge: getField('islakImzaliBelge', 'ISLAK İMZALI BELGE', 'ISLAK IMZALI BELGE', 'islak_imzali_belge'),
         belgeYuklemeTarihi: getField('belgeYuklemeTarihi', 'BELGE YÜKLEME TARİHİ', 'BELGE YUKLEME TARIHI', 'OLUŞTURMA TARİHİ', 'belge_yukleme_tarihi'),
         belgeLinki: getSafeDocumentUrl(getField('belgeLinki', 'BELGE LİNKİ', 'BELGE LINKI', 'belge_linki'))
       };
@@ -192,7 +193,30 @@
 
     const SIGNED_DOC_DEFAULT_FOLDER_URL = 'https://bulut.ogm.gov.tr/app/tr-TR/Klasor/Paylas/OGMDrive/4324a6cd-7f8a-4c6b-86bc-92e0990d26c3';
 
-    const hasSignedDocument = (draft) => Boolean(draft && draft.belgeYuklemeTarihi && draft.belgeLinki);
+    const foldTrForCheck = (val) => String(val || '')
+      .trim()
+      .replace(/i/g, 'İ')
+      .replace(/ı/g, 'I')
+      .toUpperCase()
+      .replace(/İ/g, 'I')
+      .replace(/Ş/g, 'S')
+      .replace(/Ğ/g, 'G')
+      .replace(/Ü/g, 'U')
+      .replace(/Ö/g, 'O')
+      .replace(/Ç/g, 'C')
+      .replace(/\s+/g, ' ');
+
+    const isSignedColJUploaded = (val) => {
+      const f = foldTrForCheck(val);
+      if (!f) return false;
+      return f.includes('YUKLENDI') || f.includes('BELGE GOR') || f.startsWith('HTTP');
+    };
+
+    const hasSignedDocument = (draft) => {
+      if (!draft) return false;
+      if (isSignedColJUploaded(draft.islakImzaliBelge)) return true;
+      return Boolean(draft.belgeYuklemeTarihi && draft.belgeLinki);
+    };
 
     function getSafeDocumentUrl(url) {
       const trimmed = String(url || '').trim();
@@ -329,6 +353,26 @@
         if (!res.ok) throw new Error(`Taslak Portal hatası: ${res.status}`);
         const json = await res.json();
         if (json.status === 'error') throw new Error(json.message || 'Taslak durumu güncellenemedi');
+        return json;
+      },
+
+      rejectDraft: async ({ rowIndex, talepNo }) => {
+        const baseUrl = resolvedDraftScriptUrl || getDraftScriptUrl() || getScriptUrl();
+        if (!baseUrl) throw new Error("Taslak Portal URL bulunamadı");
+        const res = await fetch(baseUrl, {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'rejectDraft',
+            payload: { rowIndex, talepNo, status: 'RED EDİLDİ' }
+          }),
+          redirect: 'follow'
+        });
+        if (!res.ok) throw new Error(`Taslak Portal hatası: ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message || 'Taslak reddedilemedi');
         return json;
       }
     };
@@ -2750,7 +2794,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             draftToImport.talepEden ? `<div><b>TALEP EDEN PERSONEL:</b> ${upper(draftToImport.talepEden)}</div>` : '',
             draftToImport.tarih ? `<div><b>TALEP TARİHİ:</b> ${upper(draftToImport.tarih)}</div>` : '',
             hasSignedDocument(draftToImport)
-              ? `<div><b>YÜKLENEN BELGE (ISLAK İMZALI TARANMIŞ - ${upper(draftToImport.belgeYuklemeTarihi)}):</b> <a href="${getSafeDocumentUrl(draftToImport.belgeLinki)}" target="_blank" rel="noopener noreferrer">${draftToImport.belgeLinki}</a></div>`
+              ? `<div><b>YÜKLENEN BELGE (${upper(draftToImport.islakImzaliBelge || 'ISLAK İMZALI TARANMIŞ')}${(draftToImport.belgeYuklemeTarihi || draftToImport.tarih) ? ' - ' + upper(draftToImport.belgeYuklemeTarihi || draftToImport.tarih) : ''}):</b> <a href="${getSafeDocumentUrl(draftToImport.belgeLinki) || SIGNED_DOC_DEFAULT_FOLDER_URL}" target="_blank" rel="noopener noreferrer">${getSafeDocumentUrl(draftToImport.belgeLinki) || SIGNED_DOC_DEFAULT_FOLDER_URL}</a></div>`
               : ''
           ].filter(Boolean).join('');
 
@@ -3209,17 +3253,22 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                         <div className="space-y-0.5">
                           <div className="font-black uppercase tracking-wider flex items-center gap-1.5">
                             <Icons.CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>Yüklenen Belge: Islak İmzalı Taranmış</span>
+                            <span>{draftToImport.islakImzaliBelge ? draftToImport.islakImzaliBelge : 'BELGE GÖR (YÜKLENDİ)'}</span>
                           </div>
-                          <div className="text-[11px] font-bold">Belge Yükleme Tarihi: <span className="font-mono">{draftToImport.belgeYuklemeTarihi}</span></div>
+                          {(draftToImport.belgeYuklemeTarihi || draftToImport.tarih) && (
+                            <div className="text-[11px] font-bold">Belge Yükleme Tarihi: <span className="font-mono">{draftToImport.belgeYuklemeTarihi || draftToImport.tarih}</span></div>
+                          )}
                         </div>
                         <button
                           type="button"
                           onClick={() => setShowSignedDocGuide(true)}
-                          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                          className="relative px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                         >
                           <Icons.Eye className="w-4 h-4" />
                           <span>Belgeyi Göster</span>
+                          <span className="ml-1 min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-black rounded-full inline-flex items-center justify-center ring-1 ring-white">
+                            1
+                          </span>
                         </button>
                       </div>
                     )}
@@ -3633,8 +3682,8 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
       if (!isOpen || !draft) return null;
 
-      const uploadDateText = String(draft.belgeYuklemeTarihi || '').trim();
-      const safeUrl = getSafeDocumentUrl(draft.belgeLinki);
+      const uploadDateText = String(draft.belgeYuklemeTarihi || draft.tarih || '').trim();
+      const safeUrl = getSafeDocumentUrl(draft.belgeLinki) || SIGNED_DOC_DEFAULT_FOLDER_URL;
 
       const copyUploadDate = () => {
         if (!uploadDateText) return;
@@ -3720,7 +3769,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                   <span>Açıklama / Arama Notu</span>
                 </div>
                 <p className="text-xs sm:text-sm font-bold leading-relaxed">
-                  Açılan sayfada tüm yüklemeleri göreceksiniz. Sizin eşleşme yapabilmek için &quot;oluşturma tarihi (tarih saat:dk)&quot; ile en eşleşen veriyi bulup açmanız için yukarıdaki tarihi kopyalamanız önerilir. Açılan sayfada aratınız (Ctrl+F).
+                  Açılan sayfada tüm yüklemeleri göreceksiniz. Sizin eşleşme yapabilmek için &quot;oluşturma tarihi (tarih saat:dk)&quot; ile en eşleşen veriyi bulup açmanız için yukarıdaki tarihi kopyalamanız önerilir. Açılan sayfada aratınız (Ctrl+F). <span className="text-red-700 font-black">Verilerin dakika (dk) kısmı ±1 dk oynayabilir.</span>
                 </p>
               </div>
 
@@ -3759,9 +3808,11 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
     };
 
     // --- TaslakTaleplerModal (Onay Bekleyen Talepler Portalı) ---
-    const TaslakTaleplerModal = ({ isOpen, onClose, drafts, isLoading, error, scriptNeedsUpdate, onRefresh, onTransferDraft }) => {
+    const TaslakTaleplerModal = ({ isOpen, onClose, drafts, isLoading, error, scriptNeedsUpdate, onRefresh, onTransferDraft, onRejectDraft }) => {
       const [searchTerm, setSearchTerm] = useState('');
       const [docGuideDraft, setDocGuideDraft] = useState(null);
+      const [rejectConfirmDraft, setRejectConfirmDraft] = useState(null);
+      const [isRejecting, setIsRejecting] = useState(false);
 
       if (!isOpen) return null;
 
@@ -3776,9 +3827,21 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
           (d.kuyrukNo || '').toLocaleLowerCase('tr-TR').includes(q) ||
           (d.malzemeOzet || '').toLocaleLowerCase('tr-TR').includes(q) ||
           (d.talepEden || '').toLocaleLowerCase('tr-TR').includes(q) ||
+          (d.islakImzaliBelge || '').toLocaleLowerCase('tr-TR').includes(q) ||
           (d.belgeYuklemeTarihi || '').toLocaleLowerCase('tr-TR').includes(q)
         );
       });
+
+      const handleConfirmReject = async () => {
+        if (!rejectConfirmDraft || !onRejectDraft) return;
+        setIsRejecting(true);
+        try {
+          await onRejectDraft(rejectConfirmDraft);
+          setRejectConfirmDraft(null);
+        } finally {
+          setIsRejecting(false);
+        }
+      };
 
       return (
         <React.Fragment>
@@ -3879,7 +3942,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                         {signedDocAvailable && (
                           <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded font-black uppercase tracking-wide inline-flex items-center gap-1">
                             <Icons.CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                            YÜKLENEN BELGE: ISLAK İMZALI TARANMIŞ
+                            {draft.islakImzaliBelge ? draft.islakImzaliBelge : 'BELGE GÖR (YÜKLENDİ)'}
                           </span>
                         )}
                         {draft.tarih && <span className="text-gray-500 font-bold flex items-center gap-1"><Icons.Calendar className="w-3.5 h-3.5" />{draft.tarih}</span>}
@@ -3898,21 +3961,29 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
 
                       {signedDocAvailable && (
                         <div className="bg-emerald-50/80 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-900 font-bold flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span className="font-black uppercase">Islak İmzalı Taranmış Belge Mevcut</span>
-                          <span className="text-emerald-700 font-mono">Yükleme Tarihi: {draft.belgeYuklemeTarihi}</span>
+                          <span className="font-black uppercase">Islak İmzalı Taranmış Belge Yüklendi</span>
+                          {(draft.belgeYuklemeTarihi || draft.tarih) && (
+                            <span className="text-emerald-700 font-mono">Yükleme Tarihi: {draft.belgeYuklemeTarihi || draft.tarih}</span>
+                          )}
                         </div>
                       )}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-stretch justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+                    <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-stretch justify-end gap-2.5 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
                       {signedDocAvailable && (
                         <button
                           type="button"
                           onClick={() => setDocGuideDraft(draft)}
-                          className="w-full lg:w-auto min-h-[44px] px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          className="relative w-full lg:w-auto min-h-[44px] px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                         >
-                          <Icons.Eye className="w-4 h-4" />
+                          <Icons.Eye className="w-4 h-4 shrink-0" />
                           <span>Islak İmzalı Belgeyi Göster</span>
+                          <span
+                            className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1.5 bg-red-600 text-white text-[11px] font-black rounded-full flex items-center justify-center shadow-lg ring-2 ring-white animate-pulse"
+                            title="1 Yeni Islak İmzalı Belge Yüklendi"
+                          >
+                            1
+                          </span>
                         </button>
                       )}
                       <button
@@ -3923,6 +3994,14 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                         <span>Task Line Aktar</span>
                         <Icons.ArrowRight className="w-4 h-4" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setRejectConfirmDraft(draft)}
+                        className="w-full lg:w-auto min-h-[44px] px-4 py-2.5 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white border border-red-200 hover:border-red-600 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Icons.Trash className="w-4 h-4 shrink-0" />
+                        <span>Taslağı Sil</span>
+                      </button>
                     </div>
                   </div>
                   );
@@ -3931,6 +4010,55 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
             </div>
           </div>
         </div>
+
+        {rejectConfirmDraft && (
+          <div className="fixed inset-0 bg-black/70 z-[85] backdrop-blur-sm flex justify-center items-center p-4" onClick={() => !isRejecting && setRejectConfirmDraft(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 sm:p-6 text-gray-900 space-y-4 border border-red-200" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-red-700">
+                  <Icons.ExclamationTriangle className="w-6 h-6 shrink-0" />
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight">Taslağı Sil (Reddet)</h3>
+                </div>
+                <button
+                  type="button"
+                  disabled={isRejecting}
+                  onClick={() => setRejectConfirmDraft(null)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <Icons.X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 text-xs text-red-950 space-y-1">
+                <div className="font-black uppercase">
+                  {rejectConfirmDraft.talepNo ? `#${rejectConfirmDraft.talepNo} — ` : ''}{rejectConfirmDraft.malzemeOzet || rejectConfirmDraft.formBasligi}
+                </div>
+                <p className="font-bold leading-relaxed">
+                  Bu taslak talep silinecek ve portal sayfasındaki <b>DURUM</b> sütununa <b>&quot;RED EDİLDİ&quot;</b> yazılacaktır. Devam etmek istiyor musunuz?
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={isRejecting}
+                  onClick={() => setRejectConfirmDraft(null)}
+                  className="min-h-[42px] px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  disabled={isRejecting}
+                  onClick={handleConfirmReject}
+                  className="min-h-[42px] px-5 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  <Icons.Trash className="w-4 h-4" />
+                  <span>{isRejecting ? 'İşleniyor...' : 'Evet, Red Edildi Olarak Sil'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <SignedDocumentGuideModal
           isOpen={!!docGuideDraft}
           onClose={() => setDocGuideDraft(null)}
@@ -4270,6 +4398,20 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
         setDemandToEdit(null);
         setDraftToImport(draft);
         setIsModalOpen(true);
+      };
+
+      const handleRejectDraft = async (draft) => {
+        try {
+          await draftApi.rejectDraft({
+            rowIndex: draft.rowIndex,
+            talepNo: draft.talepNo
+          });
+          setPendingDrafts(prev => prev.filter(item => !(item.rowIndex === draft.rowIndex && item.talepNo === draft.talepNo)));
+          showToast("Taslak talep silindi ve portalda 'RED EDİLDİ' olarak işaretlendi.");
+        } catch (err) {
+          console.error("Taslak reddetme hatası:", err);
+          showToast("Taslak reddedilemedi: " + (err.message || "Bağlantı hatası"), "error");
+        }
       };
 
       const handleOpenAddModal = () => { setDraftToImport(null); setDemandToEdit(null); setIsModalOpen(true); };
@@ -4857,6 +4999,7 @@ const LoadingCurtain = ({ isLoading, onTransitionEnd }) => {
                   scriptNeedsUpdate={draftsScriptNeedsUpdate}
                   onRefresh={() => fetchPendingDrafts(false)}
                   onTransferDraft={handleTransferDraft}
+                  onRejectDraft={handleRejectDraft}
                 />
                 <DemandModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveDemand} demandToEdit={demandToEdit} draftToImport={draftToImport} storedAssignedNames={storedAssignedNames} />
                 <DemandProgressModal isOpen={isProgressModalOpen} onClose={handleCloseProgressModal} demand={selectedDemandForProgress} currentTime={currentTime} onAddProgressItems={handleAddProgressItems} onEditDemand={handleUpdateDemandFromModal} onCompleteDemand={handleCompleteDemand} onEditProgressItem={handleEditProgressItem} onRequestDeleteProgressItem={requestProgressItemDeletion} onOpenEditModal={handleRequestEditFromProgress} onNotify={showToast} />
